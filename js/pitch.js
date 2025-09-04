@@ -7,6 +7,13 @@ class PitchDetector {
         // Initialize YIN detector
         this.yinDetector = new YINDetector(this.sampleRate, 2048);
         
+        // Initialize onset detector
+        this.onsetDetector = new OnsetDetector(this.analyser, this.sampleRate);
+        
+        // Initialize tempo tracker (disabled during live recording)
+        this.tempoTracker = new TempoTracker();
+        this.recordingMode = true; // True = cadenza/free time, False = quantized playback
+        
         // Frequency domain analysis (for backup/debugging)
         this.bufferLength = this.analyser.frequencyBinCount;
         this.frequencyData = new Float32Array(this.bufferLength);
@@ -18,11 +25,15 @@ class PitchDetector {
         this.yinThreshold = 0.15; // YIN periodicity threshold
         this.confidenceThreshold = 0.7; // Minimum confidence for detection
         
-        // Onset detection parameters
+        // Note tracking parameters
         this.currentNote = null;
         this.noteStartTime = 0;
-        this.minNoteDuration = 100; // Minimum note duration in ms
-        this.stabilityThreshold = 30; // cents tolerance for note stability
+        this.minNoteDuration = 80; // Minimum note duration in ms (reduced with onset detection)
+        this.stabilityThreshold = 25; // cents tolerance for note stability
+        
+        // Combined onset + pitch detection
+        this.lastOnsetTime = 0;
+        this.onsetGracePeriod = 150; // ms to look for pitch after onset
         
         // Performance optimization
         this.pitchHistory = new Array(5).fill(null); // Pitch stability tracking
@@ -135,11 +146,15 @@ class PitchDetector {
         }
         this.lastDetectionTime = currentTime;
         
+        // Check for spectral flux onset
+        const onsetResult = this.onsetDetector.detectOnset();
+        
+        // Get current pitch regardless of onset
         const pitchResult = this.detectPitch();
         
         if (!pitchResult) {
             this.updatePitchHistory(null);
-            return null; // No reliable signal
+            return null; // No reliable pitch signal
         }
         
         // Update pitch history for stability analysis
@@ -148,32 +163,83 @@ class PitchDetector {
         const noteInfo = this.frequencyToNote(pitchResult.frequency);
         const stability = this.getPitchStability();
         
-        // Enhanced note info with YIN confidence and stability
+        // Enhanced note info with YIN confidence, stability, and onset data
         const enhancedNoteInfo = {
             ...noteInfo,
             confidence: pitchResult.confidence,
             stability: stability,
-            yinPeriod: pitchResult.period
+            yinPeriod: pitchResult.period,
+            onsetDetected: !!onsetResult,
+            spectralFlux: onsetResult ? onsetResult.flux : this.onsetDetector.getCurrentFlux(),
+            onsetConfidence: onsetResult ? onsetResult.confidence : 0
         };
         
-        // Check if this is a new note or continuation
+        // Onset-driven note detection
+        if (onsetResult) {
+            // New onset detected - start tracking new note
+            this.lastOnsetTime = currentTime;
+            this.currentNote = noteInfo;
+            this.noteStartTime = currentTime;
+            
+            // In recording mode, just log timing - no real-time tempo analysis
+            let tempoInfo = { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 };
+            
+            if (!this.recordingMode) {
+                // Only do real-time tempo tracking in playback/analysis mode
+                tempoInfo = this.tempoTracker.addOnset(currentTime, noteInfo);
+            }
+            
+            return {
+                ...enhancedNoteInfo,
+                isNewNote: true,
+                timestamp: currentTime,
+                onsetTriggered: true,
+                recordingMode: this.recordingMode,
+                tempo: tempoInfo
+            };
+        }
+        
+        // No onset, but check if we're within grace period of recent onset
+        const timeSinceOnset = currentTime - this.lastOnsetTime;
+        
+        if (timeSinceOnset < this.onsetGracePeriod) {
+            // Still in grace period, update note with current pitch
+            if (pitchResult.confidence >= this.confidenceThreshold && stability > 0.5) {
+                this.currentNote = noteInfo;
+                
+                return {
+                    ...enhancedNoteInfo,
+                    isNewNote: false,
+                    duration: timeSinceOnset,
+                    timestamp: this.lastOnsetTime,
+                    onsetTriggered: false,
+                    recordingMode: this.recordingMode,
+                    tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
+                };
+            }
+        }
+        
+        // Legacy fallback: pitch-driven detection (for sustained notes without clear onsets)
         if (this.currentNote === null || 
             noteInfo.note !== this.currentNote.note ||
             Math.abs(noteInfo.cents) > this.stabilityThreshold) {
             
-            // Require minimum confidence and stability for new notes
-            if (pitchResult.confidence < this.confidenceThreshold || stability < 0.6) {
+            // Require higher confidence for pitch-only detection
+            if (pitchResult.confidence < this.confidenceThreshold * 1.2 || stability < 0.7) {
                 return null;
             }
             
-            // New note detected
+            // New note detected via pitch change
             this.currentNote = noteInfo;
             this.noteStartTime = currentTime;
             
             return {
                 ...enhancedNoteInfo,
                 isNewNote: true,
-                timestamp: currentTime
+                timestamp: currentTime,
+                onsetTriggered: false,
+                recordingMode: this.recordingMode,
+                tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
             };
         }
         
@@ -185,7 +251,10 @@ class PitchDetector {
                 ...enhancedNoteInfo,
                 isNewNote: false,
                 duration: noteDuration,
-                timestamp: this.noteStartTime
+                timestamp: this.noteStartTime,
+                onsetTriggered: false,
+                recordingMode: this.recordingMode,
+                tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
             };
         }
         
