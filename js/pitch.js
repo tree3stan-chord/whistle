@@ -1,30 +1,39 @@
 class PitchDetector {
-    constructor(analyser) {
-        this.analyser = analyser;
-        this.bufferLength = analyser.frequencyBinCount;
-        this.dataArray = new Float32Array(this.bufferLength);
-        this.sampleRate = 44100; // Will be updated from audioContext
+    constructor(audioHandler) {
+        this.audioHandler = audioHandler;
+        this.analyser = audioHandler.getAnalyser();
+        this.sampleRate = audioHandler.getSampleRate();
+        
+        // Initialize YIN detector
+        this.yinDetector = new YINDetector(this.sampleRate, 2048);
+        
+        // Frequency domain analysis (for backup/debugging)
+        this.bufferLength = this.analyser.frequencyBinCount;
+        this.frequencyData = new Float32Array(this.bufferLength);
         
         // Note frequencies (A4 = 440 Hz)
         this.noteFreqs = this.generateNoteFrequencies();
         
-        // Pitch detection parameters
-        this.minFreq = 80;   // Lowest detectable frequency
-        this.maxFreq = 2000; // Highest detectable frequency
-        this.threshold = -40; // dB threshold for detection
+        // YIN detection parameters
+        this.yinThreshold = 0.15; // YIN periodicity threshold
+        this.confidenceThreshold = 0.7; // Minimum confidence for detection
         
         // Onset detection parameters
-        this.previousAmplitude = -Infinity;
         this.currentNote = null;
         this.noteStartTime = 0;
-        this.minNoteDuration = 150; // Minimum note duration in ms (reduced for responsiveness)
-        this.stabilityThreshold = 50; // cents tolerance for note stability
+        this.minNoteDuration = 100; // Minimum note duration in ms
+        this.stabilityThreshold = 30; // cents tolerance for note stability
         
         // Performance optimization
-        this.smoothingBuffer = new Float32Array(5); // Frequency smoothing
-        this.bufferIndex = 0;
+        this.pitchHistory = new Array(5).fill(null); // Pitch stability tracking
+        this.historyIndex = 0;
         this.lastDetectionTime = 0;
-        this.detectionInterval = 50; // Throttle detection to every 50ms
+        this.detectionInterval = 30; // YIN can run faster than FFT peak detection
+        
+        // Set YIN parameters
+        this.yinDetector.setThreshold(this.yinThreshold);
+        
+        console.log(`PitchDetector initialized with YIN (${this.sampleRate}Hz)`);
     }
     
     generateNoteFrequencies() {
@@ -46,52 +55,39 @@ class PitchDetector {
     }
     
     detectPitch() {
-        // Get frequency domain data
-        this.analyser.getFloatFrequencyData(this.dataArray);
+        // Get time-domain audio data for YIN analysis
+        const audioData = this.audioHandler.getTimeDataArray();
         
-        // Find peak frequency using simple peak detection
-        let maxAmplitude = -Infinity;
-        let peakIndex = 0;
+        // Run YIN algorithm
+        const yinResult = this.yinDetector.detectPitch(audioData);
         
-        for (let i = 0; i < this.bufferLength; i++) {
-            if (this.dataArray[i] > maxAmplitude && this.dataArray[i] > this.threshold) {
-                maxAmplitude = this.dataArray[i];
-                peakIndex = i;
-            }
+        if (!yinResult || yinResult.confidence < this.confidenceThreshold) {
+            return null; // No reliable pitch detected
         }
         
-        if (maxAmplitude === -Infinity) {
-            return 0; // No signal detected
-        }
-        
-        // Convert bin index to frequency
-        const frequency = peakIndex * this.sampleRate / (2 * this.bufferLength);
-        
-        // Filter out frequencies outside our range
-        if (frequency < this.minFreq || frequency > this.maxFreq) {
-            return 0;
-        }
-        
-        // Apply simple smoothing/stability check
-        return this.refineFrequency(frequency, peakIndex);
+        return {
+            frequency: yinResult.frequency,
+            confidence: yinResult.confidence,
+            period: yinResult.period
+        };
     }
     
-    refineFrequency(centerFreq, peakIndex) {
-        // Simple parabolic interpolation for sub-bin accuracy
-        const y1 = peakIndex > 0 ? this.dataArray[peakIndex - 1] : this.dataArray[peakIndex];
-        const y2 = this.dataArray[peakIndex];
-        const y3 = peakIndex < this.bufferLength - 1 ? this.dataArray[peakIndex + 1] : this.dataArray[peakIndex];
+    updatePitchHistory(pitchResult) {
+        this.pitchHistory[this.historyIndex] = pitchResult;
+        this.historyIndex = (this.historyIndex + 1) % this.pitchHistory.length;
+    }
+    
+    getPitchStability() {
+        const validPitches = this.pitchHistory.filter(p => p !== null);
+        if (validPitches.length < 3) return 0;
         
-        const a = (y1 - 2 * y2 + y3) / 2;
-        const b = (y3 - y1) / 2;
+        const frequencies = validPitches.map(p => p.frequency);
+        const mean = frequencies.reduce((a, b) => a + b, 0) / frequencies.length;
+        const variance = frequencies.reduce((a, b) => a + (b - mean) ** 2, 0) / frequencies.length;
+        const stdDev = Math.sqrt(variance);
         
-        if (a !== 0) {
-            const xOffset = -b / (2 * a);
-            const refinedIndex = peakIndex + xOffset;
-            return refinedIndex * this.sampleRate / (2 * this.bufferLength);
-        }
-        
-        return centerFreq;
+        // Return stability as inverse of coefficient of variation
+        return mean > 0 ? 1 / (1 + stdDev / mean) : 0;
     }
     
     frequencyToNote(frequency) {
@@ -139,42 +135,43 @@ class PitchDetector {
         }
         this.lastDetectionTime = currentTime;
         
-        const frequency = this.detectPitch();
+        const pitchResult = this.detectPitch();
         
-        if (frequency <= 0) {
-            return null; // No signal
+        if (!pitchResult) {
+            this.updatePitchHistory(null);
+            return null; // No reliable signal
         }
         
-        // Apply frequency smoothing
-        this.smoothingBuffer[this.bufferIndex] = frequency;
-        this.bufferIndex = (this.bufferIndex + 1) % this.smoothingBuffer.length;
+        // Update pitch history for stability analysis
+        this.updatePitchHistory(pitchResult);
         
-        // Calculate smoothed frequency (simple moving average)
-        let smoothedFreq = 0;
-        let validSamples = 0;
-        for (let i = 0; i < this.smoothingBuffer.length; i++) {
-            if (this.smoothingBuffer[i] > 0) {
-                smoothedFreq += this.smoothingBuffer[i];
-                validSamples++;
-            }
-        }
+        const noteInfo = this.frequencyToNote(pitchResult.frequency);
+        const stability = this.getPitchStability();
         
-        if (validSamples === 0) return null;
-        smoothedFreq /= validSamples;
-        
-        const noteInfo = this.frequencyToNote(smoothedFreq);
+        // Enhanced note info with YIN confidence and stability
+        const enhancedNoteInfo = {
+            ...noteInfo,
+            confidence: pitchResult.confidence,
+            stability: stability,
+            yinPeriod: pitchResult.period
+        };
         
         // Check if this is a new note or continuation
         if (this.currentNote === null || 
             noteInfo.note !== this.currentNote.note ||
             Math.abs(noteInfo.cents) > this.stabilityThreshold) {
             
+            // Require minimum confidence and stability for new notes
+            if (pitchResult.confidence < this.confidenceThreshold || stability < 0.6) {
+                return null;
+            }
+            
             // New note detected
             this.currentNote = noteInfo;
             this.noteStartTime = currentTime;
             
             return {
-                ...noteInfo,
+                ...enhancedNoteInfo,
                 isNewNote: true,
                 timestamp: currentTime
             };
@@ -183,15 +180,15 @@ class PitchDetector {
         // Continue existing note
         const noteDuration = currentTime - this.noteStartTime;
         
-        if (noteDuration >= this.minNoteDuration) {
+        if (noteDuration >= this.minNoteDuration && stability > 0.4) {
             return {
-                ...noteInfo,
+                ...enhancedNoteInfo,
                 isNewNote: false,
                 duration: noteDuration,
                 timestamp: this.noteStartTime
             };
         }
         
-        return null; // Note too short to register
+        return null; // Note too short or unstable
     }
 }

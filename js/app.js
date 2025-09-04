@@ -45,7 +45,7 @@ class WhistleApp {
             this.audioHandler = new AudioHandler();
             await this.audioHandler.initialize();
             
-            this.pitchDetector = new PitchDetector(this.audioHandler.getAnalyser());
+            this.pitchDetector = new PitchDetector(this.audioHandler);
             
             this.isListening = true;
             this.startBtn.disabled = true;
@@ -112,14 +112,16 @@ class WhistleApp {
             }
         } else {
             // Still show current detection for debugging
-            const frequency = this.pitchDetector.detectPitch();
-            if (frequency > 0) {
-                const noteInfo = this.pitchDetector.frequencyToNote(frequency);
-                this.freqDisplay.textContent = frequency.toFixed(1);
-                this.noteDisplay.textContent = noteInfo.note;
+            const pitchResult = this.pitchDetector.detectPitch();
+            if (pitchResult) {
+                const noteInfo = this.pitchDetector.frequencyToNote(pitchResult.frequency);
+                this.freqDisplay.textContent = pitchResult.frequency.toFixed(1);
+                this.noteDisplay.textContent = `${noteInfo.note} (${(pitchResult.confidence * 100).toFixed(0)}%)`;
                 this.pitchDisplay.textContent = noteInfo.note;
             } else {
                 this.pitchDisplay.textContent = '--';
+                this.freqDisplay.textContent = '--';
+                this.noteDisplay.textContent = '--';
             }
         }
         

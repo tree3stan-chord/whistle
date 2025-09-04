@@ -21,14 +21,20 @@ class AudioHandler {
             // Create audio context
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Create analyser node (optimized settings)
+            // Create analyser node (optimized for YIN)
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 2048; // Reduced for better performance
-            this.analyser.smoothingTimeConstant = 0.8; // Increased for more stable readings
+            this.analyser.fftSize = 4096; // Larger for better frequency resolution
+            this.analyser.smoothingTimeConstant = 0.0; // No smoothing for YIN algorithm
             
-            // Connect microphone to analyser
+            // Create additional nodes for advanced processing
+            this.preEmphasisFilter = this.audioContext.createBiquadFilter();
+            this.preEmphasisFilter.type = 'highpass';
+            this.preEmphasisFilter.frequency.setValueAtTime(80, this.audioContext.currentTime); // High-pass for vocals
+            
+            // Connect audio pipeline: microphone -> pre-emphasis -> analyser
             this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.microphone.connect(this.analyser);
+            this.microphone.connect(this.preEmphasisFilter);
+            this.preEmphasisFilter.connect(this.analyser);
             
             console.log('Audio initialized successfully');
             console.log('Sample rate:', this.audioContext.sampleRate);
@@ -45,6 +51,17 @@ class AudioHandler {
     
     getAudioContext() {
         return this.audioContext;
+    }
+    
+    getSampleRate() {
+        return this.audioContext ? this.audioContext.sampleRate : 44100;
+    }
+    
+    getTimeDataArray() {
+        const bufferLength = this.analyser.fftSize;
+        const dataArray = new Float32Array(bufferLength);
+        this.analyser.getFloatTimeDomainData(dataArray);
+        return dataArray;
     }
     
     stop() {
