@@ -1,0 +1,155 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    text-align: center;
+    padding: 2rem 1rem;
+    background: linear-gradient(135deg, #2d2d2d, #1a1a1a);
+    border-bottom: 1px solid #333;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    font-weight: 300;
+    margin-bottom: 0.5rem;
+}
+
+header p {
+    color: #888;
+    font-size: 1.1rem;
+}
+
+main {
+    flex: 1;
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.controls {
+    text-align: center;
+    margin-bottom: 2rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+button {
+    background: #4a9eff;
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 120px;
+}
+
+button:hover:not(:disabled) {
+    background: #357abd;
+    transform: translateY(-1px);
+}
+
+button:disabled {
+    background: #444;
+    color: #666;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.status {
+    text-align: center;
+    margin-bottom: 2rem;
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#statusText {
+    color: #4a9eff;
+    font-weight: 500;
+}
+
+#pitchDisplay {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #00ff88;
+    min-width: 60px;
+}
+
+.staff-container {
+    background: #2a2a2a;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border: 1px solid #333;
+    overflow-x: auto;
+}
+
+#staffCanvas {
+    display: block;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.debug {
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: #666;
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.debug span {
+    background: #2a2a2a;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: 1px solid #333;
+}
+
+@media (max-width: 768px) {
+    header h1 {
+        font-size: 2rem;
+    }
+    
+    main {
+        padding: 1rem;
+    }
+    
+    .staff-container {
+        padding: 1rem;
+    }
+    
+    #staffCanvas {
+        width: 100%;
+        height: auto;
+    }
+    
+    .controls, .status, .debug {
+        flex-direction: column;
+        align-items: center;
+    }
+}

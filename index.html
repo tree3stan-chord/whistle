@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whistle - Real-time Pitch to Staff Notation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>🎵 Whistle</h1>
+        <p>Real-time pitch-to-staff notation</p>
+    </header>
+
+    <main>
+        <div class="controls">
+            <button id="startBtn" type="button">Start Listening</button>
+            <button id="stopBtn" type="button" disabled>Stop</button>
+            <button id="clearBtn" type="button">Clear</button>
+        </div>
+
+        <div class="status">
+            <span id="statusText">Click "Start Listening" to begin</span>
+            <span id="pitchDisplay">--</span>
+        </div>
+
+        <div class="staff-container">
+            <canvas id="staffCanvas" width="1200" height="400"></canvas>
+        </div>
+
+        <div class="debug">
+            <span>Detected Frequency: <span id="freqDisplay">--</span> Hz</span>
+            <span>Note: <span id="noteDisplay">--</span></span>
+        </div>
+    </main>
+
+    <script src="js/audio.js"></script>
+    <script src="js/pitch.js"></script>
+    <script src="js/notation.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
