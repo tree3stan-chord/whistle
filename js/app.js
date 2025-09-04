@@ -3,14 +3,30 @@ class WhistleApp {
         this.audioHandler = null;
         this.pitchDetector = null;
         this.notationRenderer = null;
+        this.rhythmQuantizer = null;
         this.isListening = false;
         this.lastActivityTime = 0;
         this.inactivityThreshold = 2000; // Reduce updates after 2s of no activity
         this.inputMode = 'vocal'; // Default to vocal mode
+        this.realTimeQuantization = false; // Start with cadenza mode
+        
+        // Performance optimization
+        this.targetFrameRate = 60; // Target FPS for analysis loop
+        this.lastFrameTime = 0;
+        this.frameInterval = 1000 / this.targetFrameRate;
+        this.performanceStats = {
+            frameCount: 0,
+            lastStatsTime: 0,
+            averageFrameTime: 0,
+            maxFrameTime: 0,
+            dropgedFrames: 0
+        };
+        this.skipNonCriticalUpdates = false; // Skip UI updates when performance is poor
         
         this.initializeElements();
         this.bindEvents();
         this.setupCanvas();
+        this.initializeQuantizer();
     }
     
     initializeElements() {
@@ -18,6 +34,7 @@ class WhistleApp {
         this.stopBtn = document.getElementById('stopBtn');
         this.clearBtn = document.getElementById('clearBtn');
         this.analyzeRhythmBtn = document.getElementById('analyzeRhythmBtn');
+        this.quantizeToggleBtn = document.getElementById('quantizeToggleBtn');
         this.exportPngBtn = document.getElementById('exportPngBtn');
         this.exportJsonBtn = document.getElementById('exportJsonBtn');
         this.vocalModeBtn = document.getElementById('vocalModeBtn');
@@ -39,6 +56,7 @@ class WhistleApp {
         this.stopBtn.addEventListener('click', () => this.stopListening());
         this.clearBtn.addEventListener('click', () => this.clearNotation());
         this.analyzeRhythmBtn.addEventListener('click', () => this.analyzeRecordedRhythm());
+        this.quantizeToggleBtn.addEventListener('click', () => this.toggleQuantization());
         this.exportPngBtn.addEventListener('click', () => this.exportPng());
         this.exportJsonBtn.addEventListener('click', () => this.exportJson());
         this.vocalModeBtn.addEventListener('click', () => this.setInputMode('vocal'));
@@ -48,6 +66,13 @@ class WhistleApp {
     setupCanvas() {
         this.notationRenderer = new NotationRenderer(this.canvas);
         this.notationRenderer.drawStaff();
+    }
+    
+    initializeQuantizer() {
+        this.rhythmQuantizer = new RhythmQuantizer();
+        this.rhythmQuantizer.setTempo(120); // Default tempo
+        this.rhythmQuantizer.setQuantizationLevel(16); // 16th note quantization
+        this.rhythmQuantizer.enableAdaptiveQuantization(true);
     }
     
     async startListening() {
@@ -158,17 +183,21 @@ Try playing with more consistent timing or more notes.`);
     }
     
     applyRhythmToNotation(analysis) {
-        // For now, just update the display
-        // Later: re-render notation with quantized note positions
-        this.statusText.textContent = `Applied ${Math.round(analysis.tempo)} BPM rhythm`;
+        // Update rhythm quantizer with detected tempo
+        this.rhythmQuantizer.setTempo(analysis.tempo);
         
-        // Enable rhythm-quantized mode
+        // Enable real-time quantization mode
+        this.realTimeQuantization = true;
         this.pitchDetector.recordingMode = false;
         this.pitchDetector.tempoTracker.setTempo(analysis.tempo);
+        
+        this.statusText.textContent = `Applied ${Math.round(analysis.tempo)} BPM rhythm - quantization enabled`;
         
         setTimeout(() => {
             this.statusText.textContent = 'Rhythm applied - new notes will be quantized';
         }, 2000);
+        
+        console.log('Real-time quantization enabled with tempo:', Math.round(analysis.tempo), 'BPM');
     }
     
     setInputMode(mode) {
@@ -178,9 +207,9 @@ Try playing with more consistent timing or more notes.`);
         this.vocalModeBtn.classList.toggle('active', mode === 'vocal');
         this.instrumentModeBtn.classList.toggle('active', mode === 'instrument');
         
-        // Update harmonic filter settings
-        if (this.audioHandler && this.audioHandler.harmonicFilter) {
-            this.audioHandler.harmonicFilter.setVocalMode(mode === 'vocal');
+        // Update audio processing settings
+        if (this.audioHandler) {
+            this.audioHandler.setVocalMode(mode === 'vocal');
             
             // Also adjust pitch detector confidence thresholds
             if (this.pitchDetector) {
@@ -197,41 +226,134 @@ Try playing with more consistent timing or more notes.`);
         console.log(`Input mode set to: ${mode}`);
     }
     
+    applyQuantization(noteOnset) {
+        // Create a copy of the note to avoid modifying the original
+        const quantizedNote = { ...noteOnset };
+        
+        // Get the last recorded note for duration calculation
+        const allNotes = this.notationRenderer.allNotes;
+        const lastNote = allNotes[allNotes.length - 1];
+        
+        if (lastNote && lastNote.timestamp) {
+            // Calculate actual duration since last note
+            const actualDuration = (noteOnset.timestamp - lastNote.timestamp) / 1000; // Convert to seconds
+            
+            // Apply quantization to duration
+            const quantizedDuration = this.rhythmQuantizer.quantizeDuration(actualDuration);
+            
+            // Update note with quantized timing
+            quantizedNote.quantizedDuration = quantizedDuration.duration;
+            quantizedNote.musicalDuration = quantizedDuration.musicalDuration;
+            quantizedNote.notationType = quantizedDuration.notationType;
+            quantizedNote.quantizationConfidence = quantizedDuration.confidence;
+            
+            // If we have tempo information, also quantize the onset time
+            if (noteOnset.tempo && noteOnset.tempo.beatPhase !== undefined) {
+                const quantizedOnset = this.rhythmQuantizer.quantizeOnset(
+                    noteOnset.timestamp / 1000, // Convert to seconds
+                    lastNote.timestamp / 1000,
+                    noteOnset.tempo.beatPhase
+                );
+                
+                if (quantizedOnset.onset) {
+                    quantizedNote.quantizedTimestamp = quantizedOnset.onset * 1000; // Convert back to ms
+                    quantizedNote.gridAlignment = quantizedOnset;
+                }
+            }
+            
+            // Update rhythm quantizer tempo if we have tempo information
+            if (noteOnset.tempo && noteOnset.tempo.tempo) {
+                this.rhythmQuantizer.setTempo(noteOnset.tempo.tempo);
+            }
+            
+            console.log(`Quantized: ${actualDuration.toFixed(3)}s -> ${quantizedDuration.duration.toFixed(3)}s (${quantizedDuration.notationType})`);
+        }
+        
+        return quantizedNote;
+    }
+    
+    toggleQuantization() {
+        this.realTimeQuantization = !this.realTimeQuantization;
+        
+        // Update button text and state
+        if (this.realTimeQuantization) {
+            this.quantizeToggleBtn.textContent = 'Disable Quantization';
+            this.quantizeToggleBtn.classList.add('active');
+            this.statusText.textContent = 'Real-time quantization enabled';
+            
+            // Set default tempo if not already set
+            if (!this.rhythmQuantizer.tempo || this.rhythmQuantizer.tempo === 120) {
+                this.rhythmQuantizer.setTempo(120);
+            }
+        } else {
+            this.quantizeToggleBtn.textContent = 'Enable Quantization';
+            this.quantizeToggleBtn.classList.remove('active');
+            this.statusText.textContent = 'Quantization disabled - free time mode';
+        }
+        
+        console.log('Quantization', this.realTimeQuantization ? 'enabled' : 'disabled');
+    }
+    
     resetButtons() {
         this.startBtn.disabled = false;
         this.stopBtn.disabled = true;
+        this.quantizeToggleBtn.disabled = false;
     }
     
-    startAnalysisLoop() {
+    startAnalysisLoop(currentTime = performance.now()) {
         if (!this.isListening) return;
         
+        // Frame rate limiting for performance
+        const deltaTime = currentTime - this.lastFrameTime;
+        if (deltaTime < this.frameInterval) {
+            requestAnimationFrame((time) => this.startAnalysisLoop(time));
+            return;
+        }
+        
+        // Performance monitoring
+        const frameStartTime = performance.now();
+        this.updatePerformanceStats(frameStartTime, deltaTime);
+        
+        // Core audio analysis (always runs)
         const noteOnset = this.pitchDetector.detectNoteOnset();
         
         if (noteOnset) {
-            this.freqDisplay.textContent = noteOnset.frequency.toFixed(1);
-            this.noteDisplay.textContent = `${noteOnset.note} (${(noteOnset.confidence * 100).toFixed(0)}%)`;
-            this.pitchDisplay.textContent = noteOnset.note;
-            this.onsetDisplay.textContent = noteOnset.onsetDetected ? 'YES' : 'no';
-            this.fluxDisplay.textContent = noteOnset.spectralFlux.toFixed(3);
+            // Update UI (can be skipped for performance)
+            if (!this.skipNonCriticalUpdates) {
+                this.freqDisplay.textContent = noteOnset.frequency.toFixed(1);
+                this.noteDisplay.textContent = `${noteOnset.note} (${(noteOnset.confidence * 100).toFixed(0)}%)`;
+                this.pitchDisplay.textContent = noteOnset.note;
+                this.onsetDisplay.textContent = noteOnset.onsetDetected ? 'YES' : 'no';
+                this.fluxDisplay.textContent = noteOnset.spectralFlux.toFixed(3);
+            }
             
-            // Display tempo information
-            if (noteOnset.recordingMode) {
-                this.tempoDisplay.textContent = 'FREE TIME';
-                this.beatPhaseDisplay.textContent = '--';
-                this.intervalsDisplay.textContent = this.notationRenderer.allNotes.length;
-            } else if (noteOnset.tempo) {
-                this.tempoDisplay.textContent = noteOnset.tempo.tempo ? 
-                    `${Math.round(noteOnset.tempo.tempo)} (${Math.round(noteOnset.tempo.confidence * 100)}%)` : '--';
-                this.beatPhaseDisplay.textContent = noteOnset.tempo.beatPhase.toFixed(2);
-                this.intervalsDisplay.textContent = noteOnset.tempo.intervalCount;
+            // Display tempo information (can be throttled for performance)
+            if (!this.skipNonCriticalUpdates) {
+                if (noteOnset.recordingMode) {
+                    this.tempoDisplay.textContent = 'FREE TIME';
+                    this.beatPhaseDisplay.textContent = '--';
+                    this.intervalsDisplay.textContent = this.notationRenderer.allNotes.length;
+                } else if (noteOnset.tempo) {
+                    this.tempoDisplay.textContent = noteOnset.tempo.tempo ? 
+                        `${Math.round(noteOnset.tempo.tempo)} (${Math.round(noteOnset.tempo.confidence * 100)}%)` : '--';
+                    this.beatPhaseDisplay.textContent = noteOnset.tempo.beatPhase.toFixed(2);
+                    this.intervalsDisplay.textContent = noteOnset.tempo.intervalCount;
+                }
             }
             
             // Add note to staff when new note is detected
             if (noteOnset.isNewNote) {
-                this.notationRenderer.addNote(noteOnset);
+                // Apply rhythm quantization if enabled
+                if (this.realTimeQuantization && this.rhythmQuantizer) {
+                    const quantizedNote = this.applyQuantization(noteOnset);
+                    this.notationRenderer.addNote(quantizedNote);
+                } else {
+                    // Cadenza mode - no quantization
+                    this.notationRenderer.addNote(noteOnset);
+                }
             }
-        } else {
-            // Still show current detection for debugging
+        } else if (!this.skipNonCriticalUpdates) {
+            // Still show current detection for debugging (throttled for performance)
             const pitchResult = this.pitchDetector.detectPitch();
             if (pitchResult) {
                 const noteInfo = this.pitchDetector.frequencyToNote(pitchResult.frequency);
@@ -262,7 +384,66 @@ Try playing with more consistent timing or more notes.`);
             }
         }
         
-        requestAnimationFrame(() => this.startAnalysisLoop());
+        // Complete performance monitoring
+        this.completePerformanceFrame(frameStartTime);
+        this.lastFrameTime = currentTime;
+        
+        requestAnimationFrame((time) => this.startAnalysisLoop(time));
+    }
+    
+    updatePerformanceStats(frameStartTime, deltaTime) {
+        this.performanceStats.frameCount++;
+        
+        // Log performance stats every 2 seconds
+        if (frameStartTime - this.performanceStats.lastStatsTime > 2000) {
+            const avgFps = this.performanceStats.frameCount / 2;
+            
+            // Determine if we should skip non-critical updates
+            const targetFps = this.targetFrameRate * 0.8; // 80% of target
+            this.skipNonCriticalUpdates = avgFps < targetFps;
+            
+            if (this.skipNonCriticalUpdates) {
+                console.warn(`Performance warning: ${avgFps.toFixed(1)} FPS (target: ${this.targetFrameRate}). Throttling UI updates.`);
+            } else {
+                console.log(`Performance: ${avgFps.toFixed(1)} FPS, avg frame time: ${this.performanceStats.averageFrameTime.toFixed(2)}ms`);
+            }
+            
+            // Reset stats
+            this.performanceStats.frameCount = 0;
+            this.performanceStats.lastStatsTime = frameStartTime;
+            this.performanceStats.maxFrameTime = 0;
+            this.performanceStats.averageFrameTime = 0;
+        }
+    }
+    
+    completePerformanceFrame(frameStartTime) {
+        const frameTime = performance.now() - frameStartTime;
+        
+        // Update stats
+        this.performanceStats.averageFrameTime = 
+            (this.performanceStats.averageFrameTime * (this.performanceStats.frameCount - 1) + frameTime) / 
+            this.performanceStats.frameCount;
+        
+        if (frameTime > this.performanceStats.maxFrameTime) {
+            this.performanceStats.maxFrameTime = frameTime;
+        }
+        
+        // Warn about long frames
+        const targetFrameTime = this.frameInterval;
+        if (frameTime > targetFrameTime * 2) {
+            this.performanceStats.dropgedFrames++;
+            console.warn(`Long frame detected: ${frameTime.toFixed(2)}ms (target: ${targetFrameTime.toFixed(2)}ms)`);
+        }
+    }
+    
+    // Utility method to get current performance info
+    getPerformanceInfo() {
+        return {
+            ...this.performanceStats,
+            targetFrameRate: this.targetFrameRate,
+            skipNonCriticalUpdates: this.skipNonCriticalUpdates,
+            actualFrameRate: this.performanceStats.frameCount / 2
+        };
     }
 }
 

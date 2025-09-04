@@ -21,17 +21,15 @@ class AudioHandler {
             // Create audio context
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Create analyser node (optimized for YIN)
-            this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 4096; // Larger for better frequency resolution
-            this.analyser.smoothingTimeConstant = 0.0; // No smoothing for YIN algorithm
-            
-            // Create harmonic filter for vocal processing
+            // Create harmonic filter for vocal processing (this creates the analyser internally)
             this.harmonicFilter = new HarmonicFilter(this.audioContext, this.audioContext.sampleRate);
             
             // Connect audio pipeline: microphone -> harmonic filter -> analyser
             this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.analyser = this.harmonicFilter.connectInput(this.microphone);
+            
+            // Create signal conditioner with fixed buffer size (matches HarmonicFilter's 4096 fftSize)
+            this.signalConditioner = new SignalConditioner(this.audioContext.sampleRate, 4096);
             
             console.log('Audio initialized successfully');
             console.log('Sample rate:', this.audioContext.sampleRate);
@@ -55,20 +53,40 @@ class AudioHandler {
     }
     
     getTimeDataArray() {
-        // Use harmonic filter's enhanced time data if available
+        // Get enhanced time data from harmonic filter
+        let timeData;
         if (this.harmonicFilter) {
-            return this.harmonicFilter.getFilteredTimeData();
+            timeData = this.harmonicFilter.getFilteredTimeData();
+        } else {
+            // Fallback to direct analyser data
+            const bufferLength = this.analyser.fftSize;
+            timeData = new Float32Array(bufferLength);
+            this.analyser.getFloatTimeDomainData(timeData);
         }
         
-        // Fallback to direct analyser data
-        const bufferLength = this.analyser.fftSize;
-        const dataArray = new Float32Array(bufferLength);
-        this.analyser.getFloatTimeDomainData(dataArray);
-        return dataArray;
+        // Apply signal conditioning
+        if (this.signalConditioner) {
+            timeData = this.signalConditioner.processSignal(timeData);
+        }
+        
+        return timeData;
     }
     
     getHarmonicFilter() {
         return this.harmonicFilter;
+    }
+    
+    getSignalConditioner() {
+        return this.signalConditioner;
+    }
+    
+    setVocalMode(isVocal) {
+        if (this.harmonicFilter) {
+            this.harmonicFilter.setVocalMode(isVocal);
+        }
+        if (this.signalConditioner) {
+            this.signalConditioner.setVocalMode(isVocal);
+        }
     }
     
     stop() {

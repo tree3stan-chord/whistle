@@ -18,6 +18,9 @@ class PitchDetector {
         this.tempoTracker = new TempoTracker();
         this.recordingMode = true; // True = cadenza/free time, False = quantized playback
         
+        // Initialize intelligent articulation detection
+        this.articulationDetector = new ArticulationDetector(this.sampleRate);
+        
         // Frequency domain analysis (for backup/debugging)
         this.bufferLength = this.analyser.frequencyBinCount;
         this.frequencyData = new Float32Array(this.bufferLength);
@@ -186,118 +189,120 @@ class PitchDetector {
         }
         this.lastDetectionTime = currentTime;
         
-        // Check for spectral flux onset
-        const onsetResult = this.onsetDetector.detectOnset();
-        
-        // Get current pitch regardless of onset
+        // Get current pitch and amplitude
         const pitchResult = this.detectPitch();
+        const currentAmplitude = this.getCurrentAmplitude();
         
         if (!pitchResult) {
+            // Handle silence/no pitch for articulation detector
+            const articulationResult = this.articulationDetector.analyzeArticulation(null, currentAmplitude);
+            
+            if (articulationResult.noteEvent === 'note_end') {
+                return {
+                    isNewNote: false,
+                    noteEnded: true,
+                    endedNote: articulationResult.note,
+                    timestamp: currentTime,
+                    reason: articulationResult.reason
+                };
+            }
+            
             this.updatePitchHistory(null);
-            return null; // No reliable pitch signal
+            return null;
         }
         
         // Update pitch history for stability analysis
         this.updatePitchHistory(pitchResult);
         
+        // Use intelligent articulation detection
+        const articulationResult = this.articulationDetector.analyzeArticulation(pitchResult, currentAmplitude);
+        
         const noteInfo = this.frequencyToNote(pitchResult.frequency);
         const stability = this.getPitchStability();
         
-        // Enhanced note info with YIN confidence, stability, and onset data
+        // Enhanced note info with all detection data
         const enhancedNoteInfo = {
             ...noteInfo,
             confidence: pitchResult.confidence,
             stability: stability,
             yinPeriod: pitchResult.period,
-            onsetDetected: !!onsetResult,
-            spectralFlux: onsetResult ? onsetResult.flux : this.onsetDetector.getCurrentFlux(),
-            onsetConfidence: onsetResult ? onsetResult.confidence : 0
+            method: pitchResult.method,
+            amplitude: currentAmplitude,
+            articulationType: articulationResult.articulationType || 'unknown'
         };
         
-        // Onset-driven note detection
-        if (onsetResult) {
-            // New onset detected - start tracking new note
-            this.lastOnsetTime = currentTime;
-            this.currentNote = noteInfo;
-            this.noteStartTime = currentTime;
-            
-            // In recording mode, just log timing - no real-time tempo analysis
-            let tempoInfo = { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 };
-            
-            if (!this.recordingMode) {
-                // Only do real-time tempo tracking in playback/analysis mode
-                tempoInfo = this.tempoTracker.addOnset(currentTime, noteInfo);
-            }
-            
-            return {
-                ...enhancedNoteInfo,
-                isNewNote: true,
-                timestamp: currentTime,
-                onsetTriggered: true,
-                recordingMode: this.recordingMode,
-                tempo: tempoInfo
-            };
-        }
-        
-        // No onset, but check if we're within grace period of recent onset
-        const timeSinceOnset = currentTime - this.lastOnsetTime;
-        
-        if (timeSinceOnset < this.onsetGracePeriod) {
-            // Still in grace period, update note with current pitch
-            if (pitchResult.confidence >= this.confidenceThreshold && stability > 0.5) {
-                this.currentNote = noteInfo;
+        // Handle different articulation events
+        switch (articulationResult.noteEvent) {
+            case 'note_start':
+            case 'note_change':
+                return this.handleNewNote(enhancedNoteInfo, articulationResult, currentTime);
                 
-                return {
-                    ...enhancedNoteInfo,
-                    isNewNote: false,
-                    duration: timeSinceOnset,
-                    timestamp: this.lastOnsetTime,
-                    onsetTriggered: false,
-                    recordingMode: this.recordingMode,
-                    tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
-                };
-            }
-        }
-        
-        // Legacy fallback: pitch-driven detection (for sustained notes without clear onsets)
-        if (this.currentNote === null || 
-            noteInfo.note !== this.currentNote.note ||
-            Math.abs(noteInfo.cents) > this.stabilityThreshold) {
-            
-            // Require higher confidence for pitch-only detection
-            if (pitchResult.confidence < this.confidenceThreshold * 1.2 || stability < 0.7) {
+            case 'note_continue':
+                return this.handleContinuingNote(enhancedNoteInfo, articulationResult, currentTime);
+                
+            case 'note_end':
+                return this.handleNoteEnd(articulationResult, currentTime);
+                
+            default:
                 return null;
-            }
-            
-            // New note detected via pitch change
-            this.currentNote = noteInfo;
-            this.noteStartTime = currentTime;
-            
-            return {
-                ...enhancedNoteInfo,
-                isNewNote: true,
-                timestamp: currentTime,
-                onsetTriggered: false,
-                recordingMode: this.recordingMode,
-                tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
-            };
+        }
+    }
+    
+    handleNewNote(noteInfo, articulationResult, currentTime) {
+        // Handle tempo tracking for new notes
+        let tempoInfo = { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 };
+        
+        if (!this.recordingMode) {
+            tempoInfo = this.tempoTracker.addOnset(currentTime, noteInfo);
         }
         
-        // Continue existing note
-        const noteDuration = currentTime - this.noteStartTime;
+        return {
+            ...noteInfo,
+            isNewNote: true,
+            timestamp: currentTime,
+            duration: 0,
+            articulationReason: articulationResult.reason,
+            recordingMode: this.recordingMode,
+            tempo: tempoInfo
+        };
+    }
+    
+    handleContinuingNote(noteInfo, articulationResult, currentTime) {
+        const currentNote = articulationResult.note;
         
-        if (noteDuration >= this.minNoteDuration && stability > 0.4) {
-            return {
-                ...enhancedNoteInfo,
-                isNewNote: false,
-                duration: noteDuration,
-                timestamp: this.noteStartTime,
-                onsetTriggered: false,
-                recordingMode: this.recordingMode,
-                tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
-            };
+        return {
+            ...noteInfo,
+            isNewNote: false,
+            timestamp: currentNote.startTime || currentTime,
+            duration: currentNote.duration || 0,
+            articulationReason: articulationResult.reason,
+            recordingMode: this.recordingMode,
+            tempo: this.recordingMode ? { tempo: null, confidence: 0, beatPhase: 0, intervalCount: 0 } : this.tempoTracker.getCurrentTempoInfo()
+        };
+    }
+    
+    handleNoteEnd(articulationResult, currentTime) {
+        return {
+            isNewNote: false,
+            noteEnded: true,
+            endedNote: articulationResult.note,
+            timestamp: currentTime,
+            reason: articulationResult.reason
+        };
+    }
+    
+    getCurrentAmplitude() {
+        // Get current RMS amplitude from analyser
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Float32Array(bufferLength);
+        this.analyser.getFloatFrequencyData(dataArray);
+        
+        // Find peak amplitude (convert from dB)
+        let maxAmplitude = -Infinity;
+        for (let i = 0; i < bufferLength; i++) {
+            maxAmplitude = Math.max(maxAmplitude, dataArray[i]);
         }
         
-        return null; // Note too short or unstable
+        return maxAmplitude;
     }
 }
