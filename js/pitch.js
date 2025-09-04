@@ -7,6 +7,10 @@ class PitchDetector {
         // Initialize YIN detector
         this.yinDetector = new YINDetector(this.sampleRate, 2048);
         
+        // Initialize harmonic-aware processing
+        this.harmonicFilter = audioHandler.getHarmonicFilter();
+        this.useHarmonicFiltering = true;
+        
         // Initialize onset detector
         this.onsetDetector = new OnsetDetector(this.analyser, this.sampleRate);
         
@@ -66,20 +70,56 @@ class PitchDetector {
     }
     
     detectPitch() {
-        // Get time-domain audio data for YIN analysis
+        // Primary method: YIN with harmonic-filtered data
         const audioData = this.audioHandler.getTimeDataArray();
-        
-        // Run YIN algorithm
         const yinResult = this.yinDetector.detectPitch(audioData);
         
-        if (!yinResult || yinResult.confidence < this.confidenceThreshold) {
-            return null; // No reliable pitch detected
+        // Secondary method: Harmonic analysis for validation/enhancement
+        let harmonicResult = null;
+        if (this.useHarmonicFiltering && this.harmonicFilter) {
+            harmonicResult = this.harmonicFilter.findFundamentalFrequency(audioData);
         }
         
+        // Combine results for best accuracy
+        return this.combineDetectionResults(yinResult, harmonicResult);
+    }
+    
+    combineDetectionResults(yinResult, harmonicResult) {
+        // If YIN failed, try harmonic analysis
+        if (!yinResult || yinResult.confidence < this.confidenceThreshold) {
+            if (harmonicResult && harmonicResult.confidence > 0.7) {
+                return {
+                    frequency: harmonicResult.frequency,
+                    confidence: harmonicResult.confidence * 0.9, // Slight penalty for fallback method
+                    period: this.sampleRate / harmonicResult.frequency,
+                    method: 'harmonic'
+                };
+            }
+            return null; // No reliable detection
+        }
+        
+        // YIN succeeded - optionally validate with harmonic analysis
+        if (harmonicResult && harmonicResult.confidence > 0.5) {
+            const freqDiff = Math.abs(yinResult.frequency - harmonicResult.frequency);
+            const tolerance = yinResult.frequency * 0.05; // 5% tolerance
+            
+            if (freqDiff <= tolerance) {
+                // Results agree - boost confidence
+                return {
+                    frequency: (yinResult.frequency + harmonicResult.frequency) / 2, // Average
+                    confidence: Math.min(1.0, yinResult.confidence * 1.1), // Slight boost
+                    period: yinResult.period,
+                    method: 'yin+harmonic'
+                };
+            }
+        }
+        
+        // Use YIN result as-is
         return {
             frequency: yinResult.frequency,
             confidence: yinResult.confidence,
-            period: yinResult.period
+            period: yinResult.period,
+            method: 'yin'
         };
     }
     

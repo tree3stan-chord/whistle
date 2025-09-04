@@ -6,6 +6,7 @@ class WhistleApp {
         this.isListening = false;
         this.lastActivityTime = 0;
         this.inactivityThreshold = 2000; // Reduce updates after 2s of no activity
+        this.inputMode = 'vocal'; // Default to vocal mode
         
         this.initializeElements();
         this.bindEvents();
@@ -19,6 +20,8 @@ class WhistleApp {
         this.analyzeRhythmBtn = document.getElementById('analyzeRhythmBtn');
         this.exportPngBtn = document.getElementById('exportPngBtn');
         this.exportJsonBtn = document.getElementById('exportJsonBtn');
+        this.vocalModeBtn = document.getElementById('vocalModeBtn');
+        this.instrumentModeBtn = document.getElementById('instrumentModeBtn');
         this.statusText = document.getElementById('statusText');
         this.pitchDisplay = document.getElementById('pitchDisplay');
         this.freqDisplay = document.getElementById('freqDisplay');
@@ -38,6 +41,8 @@ class WhistleApp {
         this.analyzeRhythmBtn.addEventListener('click', () => this.analyzeRecordedRhythm());
         this.exportPngBtn.addEventListener('click', () => this.exportPng());
         this.exportJsonBtn.addEventListener('click', () => this.exportJson());
+        this.vocalModeBtn.addEventListener('click', () => this.setInputMode('vocal'));
+        this.instrumentModeBtn.addEventListener('click', () => this.setInputMode('instrument'));
     }
     
     setupCanvas() {
@@ -164,6 +169,32 @@ Try playing with more consistent timing or more notes.`);
         setTimeout(() => {
             this.statusText.textContent = 'Rhythm applied - new notes will be quantized';
         }, 2000);
+    }
+    
+    setInputMode(mode) {
+        this.inputMode = mode;
+        
+        // Update button states
+        this.vocalModeBtn.classList.toggle('active', mode === 'vocal');
+        this.instrumentModeBtn.classList.toggle('active', mode === 'instrument');
+        
+        // Update harmonic filter settings
+        if (this.audioHandler && this.audioHandler.harmonicFilter) {
+            this.audioHandler.harmonicFilter.setVocalMode(mode === 'vocal');
+            
+            // Also adjust pitch detector confidence thresholds
+            if (this.pitchDetector) {
+                if (mode === 'vocal') {
+                    this.pitchDetector.confidenceThreshold = 0.6; // Slightly lower for vocals
+                    this.pitchDetector.yinDetector.setThreshold(0.15);
+                } else {
+                    this.pitchDetector.confidenceThreshold = 0.75; // Higher for instruments
+                    this.pitchDetector.yinDetector.setThreshold(0.1);
+                }
+            }
+        }
+        
+        console.log(`Input mode set to: ${mode}`);
     }
     
     resetButtons() {

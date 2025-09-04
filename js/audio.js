@@ -26,15 +26,12 @@ class AudioHandler {
             this.analyser.fftSize = 4096; // Larger for better frequency resolution
             this.analyser.smoothingTimeConstant = 0.0; // No smoothing for YIN algorithm
             
-            // Create additional nodes for advanced processing
-            this.preEmphasisFilter = this.audioContext.createBiquadFilter();
-            this.preEmphasisFilter.type = 'highpass';
-            this.preEmphasisFilter.frequency.setValueAtTime(80, this.audioContext.currentTime); // High-pass for vocals
+            // Create harmonic filter for vocal processing
+            this.harmonicFilter = new HarmonicFilter(this.audioContext, this.audioContext.sampleRate);
             
-            // Connect audio pipeline: microphone -> pre-emphasis -> analyser
+            // Connect audio pipeline: microphone -> harmonic filter -> analyser
             this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.microphone.connect(this.preEmphasisFilter);
-            this.preEmphasisFilter.connect(this.analyser);
+            this.analyser = this.harmonicFilter.connectInput(this.microphone);
             
             console.log('Audio initialized successfully');
             console.log('Sample rate:', this.audioContext.sampleRate);
@@ -58,10 +55,20 @@ class AudioHandler {
     }
     
     getTimeDataArray() {
+        // Use harmonic filter's enhanced time data if available
+        if (this.harmonicFilter) {
+            return this.harmonicFilter.getFilteredTimeData();
+        }
+        
+        // Fallback to direct analyser data
         const bufferLength = this.analyser.fftSize;
         const dataArray = new Float32Array(bufferLength);
         this.analyser.getFloatTimeDomainData(dataArray);
         return dataArray;
+    }
+    
+    getHarmonicFilter() {
+        return this.harmonicFilter;
     }
     
     stop() {

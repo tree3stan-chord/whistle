@@ -49,6 +49,13 @@ main {
     flex-wrap: wrap;
 }
 
+.controls label {
+    color: #888;
+    font-weight: 500;
+    margin-right: 10px;
+    align-self: center;
+}
+
 button {
     background: #4a9eff;
     color: white;
@@ -71,6 +78,21 @@ button:disabled {
     color: #666;
     cursor: not-allowed;
     transform: none;
+}
+
+.mode-btn {
+    background: #333;
+    padding: 0.5rem 1rem;
+    min-width: auto;
+}
+
+.mode-btn.active {
+    background: #4a9eff;
+    color: white;
+}
+
+.mode-btn:hover:not(.active) {
+    background: #555;
 }
 
 .status {
