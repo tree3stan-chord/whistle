@@ -11,7 +11,20 @@ class PitchDetector {
         // Pitch detection parameters
         this.minFreq = 80;   // Lowest detectable frequency
         this.maxFreq = 2000; // Highest detectable frequency
-        this.threshold = -60; // dB threshold for detection
+        this.threshold = -40; // dB threshold for detection
+        
+        // Onset detection parameters
+        this.previousAmplitude = -Infinity;
+        this.currentNote = null;
+        this.noteStartTime = 0;
+        this.minNoteDuration = 150; // Minimum note duration in ms (reduced for responsiveness)
+        this.stabilityThreshold = 50; // cents tolerance for note stability
+        
+        // Performance optimization
+        this.smoothingBuffer = new Float32Array(5); // Frequency smoothing
+        this.bufferIndex = 0;
+        this.lastDetectionTime = 0;
+        this.detectionInterval = 50; // Throttle detection to every 50ms
     }
     
     generateNoteFrequencies() {
@@ -100,9 +113,13 @@ class PitchDetector {
         const targetFreq = this.noteFreqs[closestNote];
         const cents = Math.round(1200 * Math.log2(frequency / targetFreq));
         
+        // Extract octave properly (handles C#4, Bb3, etc.)
+        const octaveMatch = closestNote.match(/(\d+)$/);
+        const octave = octaveMatch ? parseInt(octaveMatch[1]) : 4;
+        
         return {
             note: closestNote,
-            octave: parseInt(closestNote.slice(-1)),
+            octave: octave,
             cents: cents,
             frequency: frequency,
             targetFreq: targetFreq
@@ -111,5 +128,70 @@ class PitchDetector {
     
     setSampleRate(sampleRate) {
         this.sampleRate = sampleRate;
+    }
+    
+    detectNoteOnset() {
+        const currentTime = Date.now();
+        
+        // Throttle detection for performance
+        if (currentTime - this.lastDetectionTime < this.detectionInterval) {
+            return null;
+        }
+        this.lastDetectionTime = currentTime;
+        
+        const frequency = this.detectPitch();
+        
+        if (frequency <= 0) {
+            return null; // No signal
+        }
+        
+        // Apply frequency smoothing
+        this.smoothingBuffer[this.bufferIndex] = frequency;
+        this.bufferIndex = (this.bufferIndex + 1) % this.smoothingBuffer.length;
+        
+        // Calculate smoothed frequency (simple moving average)
+        let smoothedFreq = 0;
+        let validSamples = 0;
+        for (let i = 0; i < this.smoothingBuffer.length; i++) {
+            if (this.smoothingBuffer[i] > 0) {
+                smoothedFreq += this.smoothingBuffer[i];
+                validSamples++;
+            }
+        }
+        
+        if (validSamples === 0) return null;
+        smoothedFreq /= validSamples;
+        
+        const noteInfo = this.frequencyToNote(smoothedFreq);
+        
+        // Check if this is a new note or continuation
+        if (this.currentNote === null || 
+            noteInfo.note !== this.currentNote.note ||
+            Math.abs(noteInfo.cents) > this.stabilityThreshold) {
+            
+            // New note detected
+            this.currentNote = noteInfo;
+            this.noteStartTime = currentTime;
+            
+            return {
+                ...noteInfo,
+                isNewNote: true,
+                timestamp: currentTime
+            };
+        }
+        
+        // Continue existing note
+        const noteDuration = currentTime - this.noteStartTime;
+        
+        if (noteDuration >= this.minNoteDuration) {
+            return {
+                ...noteInfo,
+                isNewNote: false,
+                duration: noteDuration,
+                timestamp: this.noteStartTime
+            };
+        }
+        
+        return null; // Note too short to register
     }
 }

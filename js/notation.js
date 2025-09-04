@@ -13,11 +13,19 @@ class NotationRenderer {
         // Note parameters
         this.noteWidth = 15;
         this.noteHeight = 12;
-        this.currentX = this.staffStartX + 50; // Start position for notes
+        this.noteSpacing = 40;
+        this.currentX = this.staffStartX + 80; // Start position for notes
         
         // Musical constants
         this.clefType = 'treble';
         this.keySignature = 'C'; // C major (no sharps/flats)
+        
+        // Measure and scrolling
+        this.measureWidth = 200;
+        this.notesPerMeasure = 4;
+        this.currentMeasure = 0;
+        this.noteInMeasure = 0;
+        this.allNotes = []; // Store all placed notes
         
         this.setupCanvas();
     }
@@ -38,7 +46,10 @@ class NotationRenderer {
     
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.currentX = this.staffStartX + 50;
+        this.currentX = this.staffStartX + 80;
+        this.currentMeasure = 0;
+        this.noteInMeasure = 0;
+        this.allNotes = [];
     }
     
     drawStaff() {
@@ -54,11 +65,33 @@ class NotationRenderer {
             this.ctx.stroke();
         }
         
+        // Draw measure lines
+        this.drawMeasureLines();
+        
         // Draw treble clef (simplified)
         this.drawTrebleClef();
         
         // Draw time signature (4/4)
         this.drawTimeSignature();
+    }
+    
+    drawMeasureLines() {
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 1;
+        
+        const staffTop = this.staffStartY;
+        const staffBottom = this.staffStartY + (this.staffSpacing * 4);
+        
+        // Draw measure separators
+        for (let measure = 1; measure <= Math.floor(this.staffWidth / this.measureWidth); measure++) {
+            const x = this.staffStartX + (measure * this.measureWidth);
+            if (x < this.staffStartX + this.staffWidth) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, staffTop);
+                this.ctx.lineTo(x, staffBottom);
+                this.ctx.stroke();
+            }
+        }
     }
     
     drawTrebleClef() {
@@ -85,36 +118,38 @@ class NotationRenderer {
     }
     
     noteToStaffPosition(noteInfo) {
-        // Map notes to staff positions (treble clef)
-        const notePositions = {
-            // Octave 4
-            'C4': this.staffStartY + (this.staffSpacing * 5), // Below staff
-            'D4': this.staffStartY + (this.staffSpacing * 4.5),
-            'E4': this.staffStartY + (this.staffSpacing * 4),
-            'F4': this.staffStartY + (this.staffSpacing * 3.5),
-            'G4': this.staffStartY + (this.staffSpacing * 3),
-            'A4': this.staffStartY + (this.staffSpacing * 2.5),
-            'B4': this.staffStartY + (this.staffSpacing * 2),
-            
-            // Octave 5
-            'C5': this.staffStartY + (this.staffSpacing * 1.5),
-            'D5': this.staffStartY + (this.staffSpacing * 1),
-            'E5': this.staffStartY + (this.staffSpacing * 0.5),
-            'F5': this.staffStartY,
-            'G5': this.staffStartY - (this.staffSpacing * 0.5),
-            'A5': this.staffStartY - (this.staffSpacing * 1),
-            'B5': this.staffStartY - (this.staffSpacing * 1.5),
-            
-            // Octave 6
-            'C6': this.staffStartY - (this.staffSpacing * 2),
-            'D6': this.staffStartY - (this.staffSpacing * 2.5),
-            'E6': this.staffStartY - (this.staffSpacing * 3),
+        // Get base note and octave from note string (handles C#4, Bb3, etc.)
+        const match = noteInfo.note.match(/^([A-G][#b]?)(\d+)$/);
+        if (!match) return this.staffStartY + (this.staffSpacing * 2); // Default to G4
+        
+        const [, noteName, octaveStr] = match;
+        const octave = parseInt(octaveStr);
+        const baseNote = noteName.charAt(0); // Just C, D, E, F, G, A, or B
+        
+        // Staff line positions in treble clef (from bottom to top of staff)
+        // E4 = bottom line, G4 = second line, B4 = middle, D5 = fourth, F5 = top line
+        const basePositions = {
+            'C': 0,   // Space positions
+            'D': 1,   // Line positions  
+            'E': 2,   // Line positions
+            'F': 3,   // Space positions
+            'G': 4,   // Line positions
+            'A': 5,   // Space positions
+            'B': 6    // Line positions
         };
         
-        // Handle sharps/flats by using the base note position
-        let baseNote = noteInfo.note.replace('#', '').replace('b', '');
+        // Calculate staff position: octave 4 starts below staff
+        // Each octave = 7 semitones = 3.5 staff spaces
+        const basePosition = basePositions[baseNote];
+        const octaveOffset = (octave - 4) * 7;
+        const staffPosition = basePosition + octaveOffset;
         
-        return notePositions[baseNote] || this.staffStartY + (this.staffSpacing * 2.5);
+        // Convert to pixel Y coordinate (negative because canvas Y increases downward)
+        // Staff position 2 = E4 (bottom line), position 10 = F5 (top line)
+        const bottomLine = this.staffStartY + (this.staffSpacing * 4); // E4 position
+        const y = bottomLine - (staffPosition - 2) * (this.staffSpacing / 2);
+        
+        return y;
     }
     
     drawNote(noteInfo, x = null) {
@@ -201,11 +236,111 @@ class NotationRenderer {
     }
     
     addNote(noteInfo) {
-        // Check if we need to start a new line
-        if (this.currentX > this.staffStartX + this.staffWidth - 50) {
-            this.currentX = this.staffStartX + 50;
+        // Calculate position based on current measure and note position
+        const measureX = this.staffStartX + (this.currentMeasure * this.measureWidth);
+        const noteX = measureX + 20 + (this.noteInMeasure * (this.measureWidth - 40) / this.notesPerMeasure);
+        
+        // Check if we need to move to next measure
+        if (this.noteInMeasure >= this.notesPerMeasure) {
+            this.currentMeasure++;
+            this.noteInMeasure = 0;
+            
+            // If we've exceeded the staff width, redraw with scrolling
+            if (this.currentMeasure * this.measureWidth > this.staffWidth - this.measureWidth) {
+                this.scrollToNewMeasure();
+                return;
+            }
         }
         
-        this.drawNote(noteInfo);
+        // Store the note
+        this.allNotes.push({
+            ...noteInfo,
+            x: noteX,
+            measure: this.currentMeasure,
+            noteIndex: this.noteInMeasure
+        });
+        
+        // Draw the note
+        this.drawNote(noteInfo, noteX);
+        
+        this.noteInMeasure++;
+    }
+    
+    scrollToNewMeasure() {
+        // For now, just clear and restart - could implement proper scrolling later
+        this.clear();
+        this.drawStaff();
+        
+        // Redraw recent notes (last 2 measures)
+        const recentNotes = this.allNotes.slice(-8); // Last 8 notes
+        this.allNotes = [];
+        this.currentMeasure = 0;
+        this.noteInMeasure = 0;
+        
+        // Re-add recent notes
+        recentNotes.forEach(note => {
+            this.addNote(note);
+        });
+    }
+    
+    exportPng() {
+        // Create filename with timestamp
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `whistle-notation-${timestamp}.png`;
+        
+        // Convert canvas to PNG data URL
+        const dataURL = this.canvas.toDataURL('image/png');
+        
+        // Create download link and trigger download
+        const link = document.createElement('a');
+        link.href = dataURL;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log(`Exported PNG: ${filename}`);
+    }
+    
+    exportJson() {
+        // Create filename with timestamp
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `whistle-melody-${timestamp}.json`;
+        
+        // Prepare export data
+        const exportData = {
+            timestamp: new Date().toISOString(),
+            totalNotes: this.allNotes.length,
+            keySignature: this.keySignature,
+            timeSignature: '4/4',
+            clef: this.clefType,
+            notes: this.allNotes.map(note => ({
+                note: note.note,
+                octave: note.octave,
+                frequency: Math.round(note.frequency * 100) / 100,
+                cents: note.cents,
+                measure: note.measure,
+                noteIndex: note.noteIndex,
+                timestamp: note.timestamp
+            }))
+        };
+        
+        // Convert to JSON string
+        const jsonString = JSON.stringify(exportData, null, 2);
+        
+        // Create download link and trigger download
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        console.log(`Exported JSON: ${filename} (${this.allNotes.length} notes)`);
     }
 }

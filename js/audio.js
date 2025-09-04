@@ -21,10 +21,10 @@ class AudioHandler {
             // Create audio context
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Create analyser node
+            // Create analyser node (optimized settings)
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 4096;
-            this.analyser.smoothingTimeConstant = 0.3;
+            this.analyser.fftSize = 2048; // Reduced for better performance
+            this.analyser.smoothingTimeConstant = 0.8; // Increased for more stable readings
             
             // Connect microphone to analyser
             this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);

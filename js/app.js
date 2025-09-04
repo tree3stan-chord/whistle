@@ -4,6 +4,8 @@ class WhistleApp {
         this.pitchDetector = null;
         this.notationRenderer = null;
         this.isListening = false;
+        this.lastActivityTime = 0;
+        this.inactivityThreshold = 2000; // Reduce updates after 2s of no activity
         
         this.initializeElements();
         this.bindEvents();
@@ -14,6 +16,8 @@ class WhistleApp {
         this.startBtn = document.getElementById('startBtn');
         this.stopBtn = document.getElementById('stopBtn');
         this.clearBtn = document.getElementById('clearBtn');
+        this.exportPngBtn = document.getElementById('exportPngBtn');
+        this.exportJsonBtn = document.getElementById('exportJsonBtn');
         this.statusText = document.getElementById('statusText');
         this.pitchDisplay = document.getElementById('pitchDisplay');
         this.freqDisplay = document.getElementById('freqDisplay');
@@ -25,6 +29,8 @@ class WhistleApp {
         this.startBtn.addEventListener('click', () => this.startListening());
         this.stopBtn.addEventListener('click', () => this.stopListening());
         this.clearBtn.addEventListener('click', () => this.clearNotation());
+        this.exportPngBtn.addEventListener('click', () => this.exportPng());
+        this.exportJsonBtn.addEventListener('click', () => this.exportJson());
     }
     
     setupCanvas() {
@@ -77,6 +83,14 @@ class WhistleApp {
         this.notationRenderer.drawStaff();
     }
     
+    exportPng() {
+        this.notationRenderer.exportPng();
+    }
+    
+    exportJson() {
+        this.notationRenderer.exportJson();
+    }
+    
     resetButtons() {
         this.startBtn.disabled = false;
         this.stopBtn.disabled = true;
@@ -85,19 +99,28 @@ class WhistleApp {
     startAnalysisLoop() {
         if (!this.isListening) return;
         
-        const frequency = this.pitchDetector.detectPitch();
+        const noteOnset = this.pitchDetector.detectNoteOnset();
         
-        if (frequency > 0) {
-            const noteInfo = this.pitchDetector.frequencyToNote(frequency);
+        if (noteOnset) {
+            this.freqDisplay.textContent = noteOnset.frequency.toFixed(1);
+            this.noteDisplay.textContent = noteOnset.note;
+            this.pitchDisplay.textContent = noteOnset.note;
             
-            this.freqDisplay.textContent = frequency.toFixed(1);
-            this.noteDisplay.textContent = noteInfo.note;
-            this.pitchDisplay.textContent = noteInfo.note;
-            
-            // Add note to staff (placeholder for now)
-            // this.notationRenderer.addNote(noteInfo);
+            // Add note to staff when new note is detected
+            if (noteOnset.isNewNote) {
+                this.notationRenderer.addNote(noteOnset);
+            }
         } else {
-            this.pitchDisplay.textContent = '--';
+            // Still show current detection for debugging
+            const frequency = this.pitchDetector.detectPitch();
+            if (frequency > 0) {
+                const noteInfo = this.pitchDetector.frequencyToNote(frequency);
+                this.freqDisplay.textContent = frequency.toFixed(1);
+                this.noteDisplay.textContent = noteInfo.note;
+                this.pitchDisplay.textContent = noteInfo.note;
+            } else {
+                this.pitchDisplay.textContent = '--';
+            }
         }
         
         requestAnimationFrame(() => this.startAnalysisLoop());
