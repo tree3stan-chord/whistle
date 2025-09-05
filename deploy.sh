@@ -13,13 +13,18 @@ rsync -az --delete --exclude deploy.sh --exclude .git --exclude node_modules \
 
 echo "▶ Install backend dependencies"
 cd "$OUT/backend"
-npm ci --only=production
+if [ ! -f package-lock.json ]; then
+    echo "  → Generating package-lock.json..."
+    npm install --package-lock-only
+fi
+npm ci --omit=dev
 
 echo "▶ Initialize database"
 cd "$OUT/backend"
+mkdir -p data logs
 node -e "
-const { initializeDatabase } = require('./config/database');
-initializeDatabase().then(() => {
+const { initDatabase } = require('./config/database');
+initDatabase().then(() => {
   console.log('Database initialized successfully');
   process.exit(0);
 }).catch(err => {
