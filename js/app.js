@@ -323,8 +323,8 @@ Try playing with more consistent timing or more notes.`);
                 this.freqDisplay.textContent = noteOnset.frequency.toFixed(1);
                 this.noteDisplay.textContent = `${noteOnset.note} (${(noteOnset.confidence * 100).toFixed(0)}%)`;
                 this.pitchDisplay.textContent = noteOnset.note;
-                this.onsetDisplay.textContent = noteOnset.onsetDetected ? 'YES' : 'no';
-                this.fluxDisplay.textContent = noteOnset.spectralFlux.toFixed(3);
+                this.onsetDisplay.textContent = noteOnset.isNewNote ? 'NEW NOTE!' : (noteOnset.onsetDetected ? 'YES' : 'no');
+                this.fluxDisplay.textContent = noteOnset.articulationReason || noteOnset.spectralFlux?.toFixed(3) || '--';
             }
             
             // Display tempo information (can be throttled for performance)

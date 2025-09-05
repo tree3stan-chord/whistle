@@ -7,10 +7,7 @@ class HarmonicFilter {
         this.audioContext = audioContext;
         this.sampleRate = sampleRate;
         
-        // Create filter chain for vocal enhancement
-        this.createFilterChain();
-        
-        // Harmonic analysis buffers
+        // Harmonic analysis buffers (must be set before creating filter chain)
         this.bufferSize = 2048;
         this.analysisBuffer = new Float32Array(this.bufferSize);
         this.spectrumBuffer = new Float32Array(this.bufferSize / 2);
@@ -18,6 +15,9 @@ class HarmonicFilter {
         // Harmonic detection parameters
         this.harmonicThreshold = 0.3; // Ratio for harmonic detection
         this.fundamentalBias = 1.5;   // Bias toward fundamental frequency
+        
+        // Create filter chain for vocal enhancement (after bufferSize is set)
+        this.createFilterChain();
         
         console.log('HarmonicFilter initialized for vocal processing');
     }
