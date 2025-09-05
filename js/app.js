@@ -34,6 +34,7 @@ class WhistleApp {
         this.initializeEnhancedExport();
         this.initializeSessionManager();
         this.initializeForensicAnalysis();
+        this.initializeVocalTranscription();
     }
     
     initializeElements() {
@@ -167,6 +168,23 @@ class WhistleApp {
         console.log('Forensic Analysis System initialized');
     }
     
+    initializeVocalTranscription() {
+        // Initialize revolutionary vocal transcription engine
+        if (this.forensicIntegration && this.forensicIntegration.forensicAnalyzer) {
+            this.vocalTranscriptionEngine = new VocalTranscriptionEngine(
+                this.audioHandler, 
+                this.forensicIntegration.forensicAnalyzer
+            );
+            
+            // Set up event listeners for transcription updates
+            this.setupTranscriptionEventListeners();
+            
+            console.log('🎤 Revolutionary Vocal Transcription Engine initialized - World\'s first web-based vocal-to-MIDI system ready!');
+        } else {
+            console.warn('Vocal transcription requires forensic analysis - initializing after audio starts');
+        }
+    }
+    
     async startListening() {
         try {
             this.statusText.textContent = 'Requesting microphone access...';
@@ -194,6 +212,14 @@ class WhistleApp {
             
             this.statusText.textContent = 'Listening for pitch...';
             
+            // Start vocal transcription if available
+            if (this.vocalTranscriptionEngine) {
+                await this.vocalTranscriptionEngine.startVocalTranscription({
+                    mode: 'hybrid',
+                    language: 'en-US'
+                });
+            }
+            
             this.startAnalysisLoop();
             
         } catch (error) {
@@ -203,7 +229,48 @@ class WhistleApp {
         }
     }
     
-    stopListening() {
+    setupTranscriptionEventListeners() {
+        // Listen for vocal transcription events
+        document.addEventListener('vocal-transcription-update', (event) => {
+            this.handleTranscriptionUpdate(event.detail);
+        });
+        
+        document.addEventListener('vocal-transcription-interim', (event) => {
+            this.handleInterimTranscription(event.detail);
+        });
+        
+        document.addEventListener('syllable-alignment-complete', (event) => {
+            this.handleAlignmentComplete(event.detail);
+        });
+        
+        console.log('Vocal transcription event listeners established');
+    }
+    
+    handleTranscriptionUpdate(detail) {
+        // Handle real-time transcription updates
+        if (detail.transcription && detail.transcription.lyrics.length > 0) {
+            // Update UI with lyrics - you could add a lyrics display area
+            console.log('Transcription update:', detail.transcription.lyrics.map(l => l.word).join(' '));
+        }
+        
+        // Update status with transcription confidence
+        if (detail.transcription.confidence > 0) {
+            const confidencePercent = Math.round(detail.transcription.confidence * 100);
+            this.statusText.textContent = `Transcribing... (${confidencePercent}% confidence)`;
+        }
+    }
+    
+    handleInterimTranscription(detail) {
+        // Show interim results - could add to UI
+        console.log('Interim:', detail.transcript);
+    }
+    
+    handleAlignmentComplete(detail) {
+        // Handle completed syllable-to-note alignments
+        console.log('Alignment complete:', detail.alignedSyllables?.length || 0, 'syllables aligned');
+    }
+    
+    async stopListening() {
         this.isListening = false;
         
         // Stop playhead recording
@@ -211,6 +278,12 @@ class WhistleApp {
             this.playhead.stopRecording();
         }
         this.notationRenderer.setRecordingState(false);
+        
+        // Stop vocal transcription if running
+        if (this.vocalTranscriptionEngine) {
+            const transcriptionResult = await this.vocalTranscriptionEngine.stopVocalTranscription();
+            console.log('🎤 Vocal transcription stopped. Final result:', transcriptionResult);
+        }
         
         if (this.audioHandler) {
             this.audioHandler.stop();
