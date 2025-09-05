@@ -1,9 +1,18 @@
 class EnhancedExport {
-    constructor(notationRenderer, staffConfig) {
+    constructor(notationRenderer, staffConfig, vocalTranscriptionEngine = null, articulationIntegration = null) {
         this.notationRenderer = notationRenderer;
         this.staffConfig = staffConfig;
+        this.vocalTranscriptionEngine = vocalTranscriptionEngine;
+        this.articulationIntegration = articulationIntegration;
         
-        console.log('EnhancedExport initialized with MIDI, MusicXML, SVG, and PDF support');
+        // Initialize Phase 6 Professional Exporter
+        this.professionalExporter = new EnhancedProfessionalExporter(
+            notationRenderer,
+            vocalTranscriptionEngine,
+            articulationIntegration
+        );
+        
+        console.log('🚀 Enhanced Export initialized with Phase 6 Professional Export capabilities');
     }
     
     // Export to MIDI format
@@ -525,8 +534,89 @@ startxref
         };
     }
     
-    // Batch export all formats
-    exportAll() {
+    // Phase 6 Professional Export - All formats with vocal-specific features
+    async exportAll() {
+        try {
+            console.log('🚀 Starting Phase 6 Professional Export...');
+            
+            // Use professional export system if available
+            if (this.professionalExporter) {
+                const exportPackage = await this.professionalExporter.exportAll({
+                    title: 'Vocal Transcription',
+                    composer: 'Transcribed with Whistle',
+                    copyright: `© ${new Date().getFullYear()}`,
+                    includeVocalFeatures: true,
+                    professionalLayout: true
+                });
+                
+                console.log('🎉 Professional export package created:', exportPackage);
+                return exportPackage;
+            } else {
+                // Fallback to legacy export
+                this.exportEnhancedJSON();
+                setTimeout(() => this.exportMIDI(), 500);
+                setTimeout(() => this.exportMusicXML(), 1000);
+                setTimeout(() => this.exportSVG(), 1500);
+                setTimeout(() => this.exportPDF(), 2000);
+                
+                console.log('Batch export initiated for all formats (legacy mode)');
+            }
+        } catch (error) {
+            console.error('Professional export failed:', error);
+            throw error;
+        }
+    }
+    
+    // Individual professional export methods
+    async exportProfessionalMusicXML() {
+        if (!this.professionalExporter) return this.exportMusicXML();
+        
+        const result = await this.professionalExporter.exportToMusicXML(
+            this.professionalExporter.prepareVocalScoreData({
+                title: 'Vocal Transcription - MusicXML',
+                includeVocalFeatures: true
+            })
+        );
+        
+        console.log('🎼 Professional MusicXML exported:', result.filename);
+        return result;
+    }
+    
+    async exportProfessionalLilyPond() {
+        if (!this.professionalExporter) {
+            console.warn('LilyPond export requires Phase 6 Professional Exporter');
+            return null;
+        }
+        
+        const result = await this.professionalExporter.exportToLilyPond(
+            this.professionalExporter.prepareVocalScoreData({
+                title: 'Vocal Transcription - LilyPond',
+                includeVocalFeatures: true,
+                professionalLayout: true
+            })
+        );
+        
+        console.log('🎵 Professional LilyPond exported:', result.filename);
+        return result;
+    }
+    
+    async exportProfessionalMIDI() {
+        if (!this.professionalExporter) return this.exportMIDI();
+        
+        const result = await this.professionalExporter.exportToMIDI(
+            this.professionalExporter.prepareVocalScoreData({
+                title: 'Vocal Transcription - Enhanced MIDI',
+                includeExtendedCC: true,
+                vocalArticulations: true
+            })
+        );
+        
+        console.log('🎹 Professional Enhanced MIDI exported:', result.filename);
+        return result;
+    }
+    
+    // Batch export all formats (legacy method maintained for compatibility)
+    exportAllLegacy() {
         try {
             this.exportEnhancedJSON();
             setTimeout(() => this.exportMIDI(), 500);
@@ -534,9 +624,9 @@ startxref
             setTimeout(() => this.exportSVG(), 1500);
             setTimeout(() => this.exportPDF(), 2000);
             
-            console.log('Batch export initiated for all formats');
+            console.log('Legacy batch export initiated for all formats');
         } catch (error) {
-            console.error('Batch export failed:', error);
+            console.error('Legacy batch export failed:', error);
             throw error;
         }
     }

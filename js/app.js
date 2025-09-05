@@ -207,9 +207,14 @@ class WhistleApp {
     }
     
     initializeEnhancedExport() {
-        // Initialize enhanced export system
-        this.enhancedExport = new EnhancedExport(this.notationRenderer, this.staffConfig);
-        console.log('EnhancedExport initialized');
+        // Initialize enhanced export system with Phase 6 Professional Export
+        this.enhancedExport = new EnhancedExport(
+            this.notationRenderer, 
+            this.staffConfig,
+            this.vocalTranscriptionEngine,  // Will be set when vocal transcription is initialized
+            this.articulationIntegration    // Will be set when articulation integration is initialized
+        );
+        console.log('🚀 Phase 6 Enhanced Export initialized with Professional Export capabilities');
     }
     
     initializeForensicAnalysis() {
@@ -229,6 +234,14 @@ class WhistleApp {
             // Set up event listeners for transcription updates
             this.setupTranscriptionEventListeners();
             
+            // Update enhanced export with vocal transcription engine
+            if (this.enhancedExport) {
+                this.enhancedExport.vocalTranscriptionEngine = this.vocalTranscriptionEngine;
+                if (this.enhancedExport.professionalExporter) {
+                    this.enhancedExport.professionalExporter.transcriptionEngine = this.vocalTranscriptionEngine;
+                }
+            }
+            
             console.log('🎤 Revolutionary Vocal Transcription Engine initialized - World\'s first web-based vocal-to-MIDI system ready!');
         } else {
             console.warn('Vocal transcription requires forensic analysis - initializing after audio starts');
@@ -244,6 +257,14 @@ class WhistleApp {
             );
             
             this.setupArticulationEventListeners();
+            
+            // Update enhanced export with articulation integration
+            if (this.enhancedExport) {
+                this.enhancedExport.articulationIntegration = this.articulationIntegration;
+                if (this.enhancedExport.professionalExporter) {
+                    this.enhancedExport.professionalExporter.articulationIntegration = this.articulationIntegration;
+                }
+            }
             
             console.log('🎭 Advanced Articulation Analysis Integration initialized - Complete vocal performance analysis ready!');
         } else {
