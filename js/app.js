@@ -28,6 +28,7 @@ class WhistleApp {
         this.setupCanvas();
         this.initializeQuantizer();
         this.initializeStaffConfig();
+        this.initializePlayhead();
     }
     
     initializeElements() {
@@ -88,6 +89,18 @@ class WhistleApp {
         }
     }
     
+    initializePlayhead() {
+        // Initialize playhead system
+        this.playhead = new Playhead(this.notationRenderer, this);
+        
+        // Connect playhead to notation renderer
+        this.notationRenderer.setPlayhead(this.playhead);
+        
+        // Apply initial configuration
+        const config = this.staffConfig.getConfiguration();
+        this.playhead.updateConfiguration(config);
+    }
+    
     async startListening() {
         try {
             this.statusText.textContent = 'Requesting microphone access...';
@@ -100,6 +113,11 @@ class WhistleApp {
             this.isListening = true;
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
+            
+            // Start playhead recording
+            this.playhead.startRecording();
+            this.notationRenderer.setRecordingState(true);
+            
             this.statusText.textContent = 'Listening for pitch...';
             
             this.startAnalysisLoop();
@@ -113,6 +131,12 @@ class WhistleApp {
     
     stopListening() {
         this.isListening = false;
+        
+        // Stop playhead recording
+        if (this.playhead) {
+            this.playhead.stopRecording();
+        }
+        this.notationRenderer.setRecordingState(false);
         
         if (this.audioHandler) {
             this.audioHandler.stop();

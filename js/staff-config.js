@@ -273,6 +273,11 @@ class StaffConfiguration {
             this.app.rhythmQuantizer.setQuantizationLevel(this.config.quantizationLevel);
         }
         
+        // Apply to playhead system
+        if (this.app.playhead) {
+            this.app.playhead.updateConfiguration(this.config);
+        }
+        
         // Save settings
         this.saveSettings();
         

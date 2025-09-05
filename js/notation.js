@@ -38,6 +38,10 @@ class NotationRenderer {
         this.scrollThreshold = Math.max(2, this.maxVisibleMeasures - 1); // Start scrolling before edge
         this.scrollMode = 'continuous'; // 'continuous' or 'page'
         
+        // Playhead integration
+        this.playhead = null;         // Will be set by app
+        this.isRecording = false;     // Recording state
+        
         // Staff positioning reference points
         this.staffMiddleY = this.staffStartY + (this.staffSpacing * 2); // B4 line
         this.staffTopY = this.staffStartY;                              // F5 line  
@@ -370,6 +374,45 @@ class NotationRenderer {
     }
     
     addNote(noteInfo) {
+        let noteX;
+        
+        if (this.isRecording && this.playhead) {
+            // During recording, place notes at playhead position
+            noteX = this.playhead.getNotePositionForTime(noteInfo.timestamp || Date.now());
+            if (noteX === null) {
+                // Fallback to traditional positioning
+                noteX = this.calculateTraditionalNotePosition();
+            } else {
+                // Convert screen position to absolute position
+                noteX = noteX + this.scrollOffset;
+            }
+        } else {
+            // Traditional positioning for non-recording mode
+            noteX = this.calculateTraditionalNotePosition();
+        }
+        
+        // Store the note with absolute position
+        const noteData = {
+            ...noteInfo,
+            absoluteX: noteX,
+            measure: Math.floor((noteX - this.staffStartX - 90) / this.measureWidth),
+            timestamp: noteInfo.timestamp || Date.now()
+        };
+        
+        this.allNotes.push(noteData);
+        
+        // Remove old notes to prevent memory buildup (keep last 50 notes)
+        if (this.allNotes.length > 50) {
+            this.allNotes = this.allNotes.slice(-50);
+        }
+        
+        // Only redraw if not currently recording (playhead handles redraws during recording)
+        if (!this.isRecording) {
+            this.redrawWithScroll();
+        }
+    }
+    
+    calculateTraditionalNotePosition() {
         // Check if we need to move to next measure
         if (this.noteInMeasure >= this.notesPerMeasure) {
             this.currentMeasure++;
@@ -385,26 +428,8 @@ class NotationRenderer {
         const absoluteX = this.staffStartX + 90 + (this.currentMeasure * this.measureWidth) + 
                          (this.noteInMeasure * (this.measureWidth - 40) / this.notesPerMeasure);
         
-        // Store the note with absolute position
-        const noteData = {
-            ...noteInfo,
-            absoluteX: absoluteX,
-            measure: this.currentMeasure,
-            noteIndex: this.noteInMeasure,
-            timestamp: Date.now() // For cleanup of old notes
-        };
-        
-        this.allNotes.push(noteData);
-        
-        // Remove old notes to prevent memory buildup (keep last 50 notes)
-        if (this.allNotes.length > 50) {
-            this.allNotes = this.allNotes.slice(-50);
-        }
-        
-        // Redraw everything with current scroll position
-        this.redrawWithScroll();
-        
         this.noteInMeasure++;
+        return absoluteX;
     }
     
     updateScrolling() {
@@ -558,5 +583,15 @@ class NotationRenderer {
             tempo: this.tempo,
             showBeatGrid: this.showBeatGrid
         });
+    }
+    
+    // Playhead integration methods
+    setPlayhead(playhead) {
+        this.playhead = playhead;
+    }
+    
+    setRecordingState(recording) {
+        this.isRecording = recording;
+        console.log('Notation recording state:', recording);
     }
 }

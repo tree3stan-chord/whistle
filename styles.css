@@ -331,6 +331,38 @@ button:disabled {
     background: rgba(76, 175, 80, 0.3);
 }
 
+/* Playhead and Recording Indicators */
+.recording-active {
+    animation: recording-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.3);
+}
+
+@keyframes recording-pulse {
+    0%, 100% { 
+        box-shadow: 0 0 20px rgba(255, 71, 87, 0.3);
+        border-color: rgba(255, 71, 87, 0.5);
+    }
+    50% { 
+        box-shadow: 0 0 30px rgba(255, 71, 87, 0.6);
+        border-color: rgba(255, 71, 87, 0.8);
+    }
+}
+
+.beat-indicator {
+    position: absolute;
+    width: 1px;
+    height: 100%;
+    background: #40444b;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.beat-indicator.active {
+    background: #ff4757;
+    opacity: 0.8;
+    transition: opacity 0.1s ease;
+}
+
 .staff-container {
     background: #2a2a2a;
     border-radius: 12px;
