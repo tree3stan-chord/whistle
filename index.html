@@ -26,44 +26,17 @@
     </style>
 </head>
 <body>
-    <!-- Top Navigation Bar -->
-    <nav class="top-navbar">
-        <div class="navbar-content">
-            <!-- Brand/Logo -->
-            <div class="navbar-brand">
-                <h1 class="logo">🎵 whistle</h1>
-            </div>
-            
-            <!-- Session & User Controls -->
-            <div class="navbar-controls">
-                <!-- Session Management -->
-                <div class="control-group">
-                    <button id="saveSessionBtn" class="navbar-btn" title="Save Session">
-                        <span class="btn-icon">💾</span>
-                        <span class="btn-label">Save</span>
-                    </button>
-                    <button id="loadSessionBtn" class="navbar-btn" title="Load Session">
-                        <span class="btn-icon">📂</span>
-                        <span class="btn-label">Load</span>
-                    </button>
-                    <div id="connectivityStatus" class="connectivity-indicator online" title="Connection Status">●</div>
-                </div>
-                
-                <!-- Auth & System -->
-                <div class="control-group">
-                    <div class="auth-display">
-                        <span id="authInfo" class="auth-status">Guest session</span>
-                        <button id="authBtn" class="navbar-btn auth-btn" title="Login / Register">
-                            <span class="btn-icon">👤</span>
-                        </button>
-                    </div>
-                    <button id="debugToggle" class="navbar-btn debug-btn" title="Toggle Debug View">
-                        <span class="btn-icon">🔧</span>
-                    </button>
-                    <button id="fullscreenBtn" class="navbar-btn" title="Fullscreen">
-                        <span class="btn-icon">⛶</span>
-                    </button>
-                </div>
+    <nav style="background: rgba(0,0,0,0.95); border-bottom: 1px solid #404040; height: 60px; position: sticky; top: 0; z-index: 1000;">
+        <div style="display: grid; grid-template-columns: auto 1fr; align-items: center; height: 60px; max-width: 1400px; margin: 0 auto; padding: 0 24px;">
+            <h1 style="font-size: 20px; font-weight: 600; color: #667eea; margin: 0;">🎵 whistle</h1>
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 24px;">
+                <button id="saveSessionBtn" style="display: inline-block;" title="Save Session">💾 Save</button>
+                <button id="loadSessionBtn" style="display: inline-block;" title="Load Session">📂 Load</button>
+                <div id="connectivityStatus" style="display: inline-block;">●</div>
+                <span id="authInfo" style="display: inline-block; font-size: 14px; color: #999;">Guest session</span>
+                <button id="authBtn" style="display: inline-block;" title="Login / Register">👤</button>
+                <button id="debugToggle" style="display: inline-block;" title="Toggle Debug View">🔧</button>
+                <button id="fullscreenBtn" style="display: inline-block;" title="Fullscreen">⛶</button>
             </div>
         </div>
     </nav>
