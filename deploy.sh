@@ -59,23 +59,13 @@ After=network.target
 Type=simple
 User=nginx
 Group=nginx
-WorkingDirectory=/var/www/whistle.musicsian.com/current/backend
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node /var/www/whistle.musicsian.com/current/backend/server.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
 Environment=PORT=3001
 Environment=HOST=127.0.0.1
 Environment=JWT_SECRET=$(openssl rand -hex 32)
-
-# Security settings
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/var/www/whistle.musicsian.com/current/backend/data
-ReadWritePaths=/var/www/whistle.musicsian.com/current/backend/logs
-NoNewPrivileges=yes
-CapabilityBoundingSet=
 
 # Logging
 StandardOutput=journal
@@ -85,6 +75,12 @@ SyslogIdentifier=whistle-backend
 [Install]
 WantedBy=multi-user.target
 EOF
+
+echo "▶ Set proper permissions"
+sudo chown -R nginx:nginx /var/www/whistle.musicsian.com/current/backend/
+sudo chmod -R 755 /var/www/whistle.musicsian.com/current/backend/
+sudo chmod -R 775 /var/www/whistle.musicsian.com/current/backend/data/
+sudo chmod -R 775 /var/www/whistle.musicsian.com/current/backend/logs/
 
 echo "▶ Reload systemd and start backend"
 sudo systemctl daemon-reload

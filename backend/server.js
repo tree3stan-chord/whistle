@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { initializeDatabase, closeDatabase, getDatabase } = require('./config/database');
+const { initDatabase, closeDatabase, getDatabase } = require('./config/database');
 const config = require('./config');
 
 // Import middleware
@@ -293,7 +293,7 @@ async function startServer() {
   try {
     // Initialize database
     console.log('Initializing database...');
-    await initializeDatabase();
+    await initDatabase();
     console.log('Database initialized successfully');
     
     // Start HTTP server

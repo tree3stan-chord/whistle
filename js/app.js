@@ -33,6 +33,7 @@ class WhistleApp {
         this.initializeAudioConfig();
         this.initializeEnhancedExport();
         this.initializeSessionManager();
+        this.initializeForensicAnalysis();
     }
     
     initializeElements() {
@@ -158,6 +159,12 @@ class WhistleApp {
         // Initialize enhanced export system
         this.enhancedExport = new EnhancedExport(this.notationRenderer, this.staffConfig);
         console.log('EnhancedExport initialized');
+    }
+    
+    initializeForensicAnalysis() {
+        // Initialize forensic audio analysis system
+        this.forensicIntegration = new ForensicIntegration(this);
+        console.log('Forensic Analysis System initialized');
     }
     
     async startListening() {
