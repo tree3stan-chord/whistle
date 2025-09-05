@@ -876,13 +876,13 @@ body {
 .modal-content {
     position: relative;
     background: var(--bg-primary);
-    margin: 5% auto;
+    margin: 3% auto;
     padding: 0;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-l);
-    width: 90%;
-    max-width: 500px;
-    max-height: 80vh;
+    width: 85%;
+    max-width: 600px;
+    max-height: 85vh;
     overflow: hidden;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     animation: slideIn 0.3s ease;
@@ -921,8 +921,8 @@ body {
 }
 
 .modal-body {
-    padding: var(--space-l);
-    max-height: 60vh;
+    padding: var(--space-xl);
+    max-height: 65vh;
     overflow-y: auto;
 }
 

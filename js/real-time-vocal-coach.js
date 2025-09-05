@@ -182,10 +182,12 @@ class RealTimeVocalCoach {
      * Initialize metronome system
      */
     initializeMetronome() {
-        // Create audio context for metronome clicks
+        // Use shared audio context for metronome clicks
         try {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            this.metronome.clickTrack = this.createMetronomeSound();
+            this.audioContext = this.audioHandler ? this.audioHandler.getAudioContext() : null;
+            if (this.audioContext) {
+                this.metronome.clickTrack = this.createMetronomeSound();
+            }
         } catch (e) {
             console.warn('Could not initialize metronome audio:', e);
         }

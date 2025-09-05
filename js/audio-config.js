@@ -353,41 +353,17 @@ class AudioConfiguration {
     }
     
     async initializeAudioWithConfig() {
-        const constraints = {
-            audio: {
-                deviceId: this.config.deviceId ? { exact: this.config.deviceId } : undefined,
-                echoCancellation: false,
-                autoGainControl: false,
-                noiseSuppression: false,
-                sampleRate: this.config.sampleRate
-            }
-        };
-        
-        // Get media stream with specific device
-        this.audioHandler.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // Create audio context with preferred sample rate
-        const audioContextOptions = {
-            sampleRate: this.config.sampleRate
-        };
-        this.audioHandler.audioContext = new (window.AudioContext || window.webkitAudioContext)(audioContextOptions);
-        
-        // Create audio pipeline
-        this.audioHandler.harmonicFilter = new HarmonicFilter(this.audioHandler.audioContext, this.audioHandler.audioContext.sampleRate);
-        this.audioHandler.microphone = this.audioHandler.audioContext.createMediaStreamSource(this.audioHandler.mediaStream);
-        
-        // Create and insert gain node
-        this.gainNode = this.audioHandler.audioContext.createGain();
-        this.gainNode.gain.setValueAtTime(this.config.inputGain, this.audioHandler.audioContext.currentTime);
-        
-        // Connect pipeline: microphone -> gain -> harmonic filter -> analyser
-        this.audioHandler.microphone.connect(this.gainNode);
-        this.audioHandler.analyser = this.audioHandler.harmonicFilter.connectInput(this.gainNode);
-        
-        // Recreate signal conditioner
-        this.audioHandler.signalConditioner = new SignalConditioner(this.audioHandler.audioContext.sampleRate, 4096);
-        this.audioHandler.signalConditioner.setNoiseGate(this.config.noiseGate);
-        this.audioHandler.signalConditioner.setSensitivity(this.config.inputSensitivity);
+        // Don't create a new AudioContext - just reinitialize the existing AudioHandler
+        if (this.audioHandler) {
+            // Stop current audio first
+            this.audioHandler.stop();
+            
+            // Reinitialize with new config
+            await this.audioHandler.initialize(this.config);
+            
+            // Update gain node reference
+            this.gainNode = this.audioHandler.getGainNode();
+        }
     }
     
     testAudio() {
@@ -436,7 +412,7 @@ class AudioConfiguration {
     }
     
     getCurrentInputLevel() {
-        if (!this.audioHandler.analyser) return 0;
+        if (!this.audioHandler || !this.audioHandler.analyser) return 0;
         
         const bufferLength = this.audioHandler.analyser.fftSize;
         const dataArray = new Float32Array(bufferLength);
@@ -457,6 +433,15 @@ class AudioConfiguration {
         if (!levelBar || !levelText) return;
         
         const updateLevels = () => {
+            // Only monitor if audio handler is available
+            if (!this.audioHandler || !this.audioHandler.analyser) {
+                levelBar.style.width = '0%';
+                levelBar.style.backgroundColor = '#666';
+                levelText.textContent = '-∞ dB';
+                requestAnimationFrame(updateLevels);
+                return;
+            }
+            
             const level = this.getCurrentInputLevel();
             const dbLevel = level > 0 ? 20 * Math.log10(level) : -Infinity;
             

@@ -11,6 +11,12 @@ class AudioHandler {
     
     async initialize(config = null) {
         try {
+            // Clean up any existing AudioContext first
+            if (this.audioContext && this.audioContext.state !== 'closed') {
+                console.log('Closing existing AudioContext');
+                await this.audioContext.close();
+            }
+            
             // Use provided config or defaults
             const audioConfig = config || {
                 deviceId: null,
@@ -26,18 +32,22 @@ class AudioHandler {
                     deviceId: audioConfig.deviceId ? { exact: audioConfig.deviceId } : undefined,
                     echoCancellation: false,
                     autoGainControl: false,
-                    noiseSuppression: false,
-                    sampleRate: audioConfig.sampleRate
+                    noiseSuppression: false
                 }
             };
             
             this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
             
-            // Create audio context with preferred sample rate
+            // Get the MediaStream's sample rate and use it for AudioContext
+            const mediaStreamSampleRate = this.mediaStream.getAudioTracks()[0].getSettings().sampleRate || 44100;
+            console.log('MediaStream sample rate:', mediaStreamSampleRate);
+            
+            // Create AudioContext with matching sample rate
             const audioContextOptions = {
-                sampleRate: audioConfig.sampleRate
+                sampleRate: mediaStreamSampleRate
             };
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)(audioContextOptions);
+            console.log('Created AudioContext with sample rate:', this.audioContext.sampleRate);
             
             // Create harmonic filter for vocal processing (this creates the analyser internally)
             this.harmonicFilter = new HarmonicFilter(this.audioContext, this.audioContext.sampleRate);

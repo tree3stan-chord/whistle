@@ -39,7 +39,8 @@ class WhistleApp {
         this.initializeStaffConfig();
         this.initializePlayhead();
         this.initializeRegisterDetector();
-        this.initializeAudioConfig();
+        // Skip AudioConfig initialization - only initialize when actually starting audio
+        // this.initializeAudioConfig();
         this.initializeEnhancedExport();
         this.initializeSessionManager();
         this.initializeForensicAnalysis();
@@ -53,6 +54,12 @@ class WhistleApp {
     initializeElements() {
         this.startBtn = document.getElementById('startBtn');
         this.stopBtn = document.getElementById('stopBtn');
+        
+        // Debug: Check if core buttons exist
+        console.log('Core buttons found:', {
+            startBtn: !!this.startBtn,
+            stopBtn: !!this.stopBtn
+        });
         this.clearBtn = document.getElementById('clearBtn');
         this.analyzeRhythmBtn = document.getElementById('analyzeRhythmBtn');
         this.quantizeToggleBtn = document.getElementById('quantizeToggleBtn');
@@ -87,11 +94,32 @@ class WhistleApp {
         this.authBtn = document.getElementById('authBtn');
         this.authInfo = document.getElementById('authInfo');
         this.connectivityStatus = document.getElementById('connectivityStatus');
+        
+        // Debug: Check if navbar elements exist
+        console.log('Navbar elements found:', {
+            saveSessionBtn: !!this.saveSessionBtn,
+            loadSessionBtn: !!this.loadSessionBtn,
+            authBtn: !!this.authBtn,
+            debugToggle: !!this.debugToggle,
+            fullscreenBtn: !!this.fullscreenBtn
+        });
     }
     
     bindEvents() {
-        this.startBtn.addEventListener('click', () => this.startListening());
-        this.stopBtn.addEventListener('click', () => this.stopListening());
+        if (this.startBtn) {
+            this.startBtn.addEventListener('click', () => {
+                console.log('Start button clicked');
+                this.startListening();
+            });
+        } else {
+            console.error('startBtn element not found');
+        }
+        
+        if (this.stopBtn) {
+            this.stopBtn.addEventListener('click', () => this.stopListening());
+        } else {
+            console.error('stopBtn element not found');
+        }
         this.clearBtn.addEventListener('click', () => this.clearNotation());
         this.analyzeRhythmBtn.addEventListener('click', () => this.analyzeRecordedRhythm());
         this.quantizeToggleBtn.addEventListener('click', () => this.toggleQuantization());
@@ -105,19 +133,66 @@ class WhistleApp {
         this.vocalModeBtn.addEventListener('click', () => this.setInputMode('vocal'));
         this.instrumentModeBtn.addEventListener('click', () => this.setInputMode('instrument'));
         
-        // New UI event handlers
-        this.debugToggle.addEventListener('click', () => this.toggleDebugPanel());
-        this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+        // Navbar event handlers with error checking
+        if (this.debugToggle) {
+            this.debugToggle.addEventListener('click', () => {
+                console.log('Debug toggle clicked');
+                this.toggleDebugPanel();
+            });
+        } else {
+            console.error('debugToggle element not found');
+        }
+        
+        if (this.fullscreenBtn) {
+            this.fullscreenBtn.addEventListener('click', () => {
+                console.log('Fullscreen toggle clicked');
+                this.toggleFullscreen();
+            });
+        } else {
+            console.error('fullscreenBtn element not found');
+        }
         
         // Session Management event handlers
-        this.saveSessionBtn.addEventListener('click', () => this.showSessionModal('save'));
-        this.loadSessionBtn.addEventListener('click', () => this.showSessionModal('load'));
-        this.authBtn.addEventListener('click', () => this.showAuthModal());
+        if (this.saveSessionBtn) {
+            this.saveSessionBtn.addEventListener('click', () => {
+                console.log('Save session clicked');
+                this.showSessionModal('save');
+            });
+        } else {
+            console.error('saveSessionBtn element not found');
+        }
+        
+        if (this.loadSessionBtn) {
+            this.loadSessionBtn.addEventListener('click', () => {
+                console.log('Load session clicked');
+                this.showSessionModal('load');
+            });
+        } else {
+            console.error('loadSessionBtn element not found');
+        }
+        
+        if (this.authBtn) {
+            this.authBtn.addEventListener('click', () => {
+                console.log('Auth button clicked');
+                this.showAuthModal();
+            });
+        } else {
+            console.error('authBtn element not found');
+        }
     }
     
     setupCanvas() {
+        console.log('Setting up canvas...');
+        console.log('Canvas element:', this.canvas);
+        if (this.canvas) {
+            console.log('Canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
+            console.log('Canvas rect:', this.canvas.getBoundingClientRect());
+        }
+        
         this.notationRenderer = new VocalNotationRenderer(this.canvas);
         this.notationRenderer.drawStaff();
+        
+        console.log('Staff drawn');
     }
     
     initializeQuantizer() {
@@ -494,17 +569,30 @@ class WhistleApp {
     }
     
     async startListening() {
+        console.log('startListening called');
         try {
+            // Clean up any existing audio first
+            if (this.audioHandler) {
+                console.log('Cleaning up existing audio...');
+                this.audioHandler.stop();
+                this.audioHandler = null;
+            }
+            
             this.statusText.textContent = 'Requesting microphone access...';
+            console.log('Status updated, initializing audio...');
             
             this.audioHandler = new AudioHandler();
             
-            // Get audio configuration if available
-            let audioConfig = null;
-            if (this.audioConfig) {
-                audioConfig = this.audioConfig.getConfiguration();
+            // Initialize AudioConfig now that we have an AudioHandler
+            if (!this.audioConfig) {
+                this.audioConfig = new AudioConfiguration(this.audioHandler, this);
+                await this.audioConfig.initialize();
+            } else {
                 this.audioConfig.audioHandler = this.audioHandler;
             }
+            
+            // Get audio configuration
+            let audioConfig = this.audioConfig ? this.audioConfig.getConfiguration() : null;
             
             await this.audioHandler.initialize(audioConfig);
             
