@@ -13,6 +13,9 @@ class WhistleApp {
         // Real-time vocal coaching
         this.vocalCoach = null;
         
+        // Phase 7+8: Advanced Musical Intelligence
+        this.musicalIntelligence = null;
+        
         // Performance optimization
         this.targetFrameRate = 60; // Target FPS for analysis loop
         this.lastFrameTime = 0;
@@ -40,6 +43,7 @@ class WhistleApp {
         this.initializeVocalTranscription();
         this.initializeArticulationIntegration();
         this.initializeVocalCoaching();
+        this.initializeAdvancedMusicalIntelligence();
     }
     
     initializeElements() {
@@ -162,6 +166,97 @@ class WhistleApp {
         
         // Analyze performance and get coaching feedback
         this.vocalCoach.analyzePerformance(noteOnset, rhythmData, articulationData);
+    }
+    
+    /**
+     * Update advanced musical intelligence with latest performance data
+     */
+    async updateMusicalIntelligence(noteOnset) {
+        if (!this.musicalIntelligence || !noteOnset) return;
+        
+        // Throttle musical intelligence updates for performance
+        const now = Date.now();
+        if (!this.lastMusicalIntelligenceUpdate) this.lastMusicalIntelligenceUpdate = 0;
+        
+        if (now - this.lastMusicalIntelligenceUpdate < 1000) return; // Update every 1 second
+        
+        try {
+            // Gather comprehensive data for analysis
+            const audioData = {
+                pitchData: this.notationRenderer.allNotes || [],
+                spectralData: this.forensicIntegration ? this.forensicIntegration.getLatestSpectralData() : null,
+                pitchVariation: this.calculatePitchVariation(),
+                vibratoPresent: noteOnset.vibrato || false
+            };
+            
+            const transcriptionData = this.vocalTranscriptionEngine ? 
+                this.vocalTranscriptionEngine.getLatestTranscription() : { 
+                    text: '', 
+                    syllables: [], 
+                    pitchData: [noteOnset] 
+                };
+            
+            const rhythmData = this.rhythmQuantizer ? {
+                beatPositions: this.rhythmQuantizer.getBeatPositions ? this.rhythmQuantizer.getBeatPositions() : [],
+                currentBeat: this.rhythmQuantizer.currentBeat || 0,
+                tempo: this.rhythmQuantizer.currentTempo || 120
+            } : null;
+            
+            // Perform comprehensive musical intelligence analysis
+            const analysis = await this.musicalIntelligence.performComprehensiveAnalysis(
+                audioData,
+                transcriptionData,
+                rhythmData
+            );
+            
+            if (analysis) {
+                // Log insights for debugging
+                if (analysis.insights && analysis.insights.cultural.length > 0) {
+                    console.log('🌍 Cultural insight:', analysis.insights.cultural[0].message);
+                }
+                
+                if (analysis.insights && analysis.insights.harmonic.length > 0) {
+                    console.log('🎼 Harmonic insight:', analysis.insights.harmonic[0].message);
+                }
+                
+                // Update UI if needed (could add musical intelligence display panel)
+                this.displayMusicalIntelligenceInsights(analysis.insights);
+            }
+            
+            this.lastMusicalIntelligenceUpdate = now;
+            
+        } catch (error) {
+            console.error('Musical intelligence update failed:', error);
+        }
+    }
+    
+    /**
+     * Display musical intelligence insights (placeholder for future UI)
+     */
+    displayMusicalIntelligenceInsights(insights) {
+        // This could be expanded to update a dedicated musical intelligence UI panel
+        if (insights && insights.performance.length > 0) {
+            console.log('🧠 Performance insight:', insights.performance[0].message);
+        }
+    }
+    
+    /**
+     * Calculate pitch variation for musical intelligence analysis
+     */
+    calculatePitchVariation() {
+        if (!this.notationRenderer || !this.notationRenderer.allNotes || this.notationRenderer.allNotes.length < 2) {
+            return 0;
+        }
+        
+        const notes = this.notationRenderer.allNotes;
+        let totalVariation = 0;
+        
+        for (let i = 1; i < notes.length; i++) {
+            const interval = Math.abs(notes[i].midiNote - notes[i-1].midiNote);
+            totalVariation += interval;
+        }
+        
+        return totalVariation / (notes.length - 1) / 12; // Normalize to octaves
     }
     
     initializeStaffConfig() {
@@ -289,6 +384,12 @@ class WhistleApp {
         }
     }
     
+    initializeAdvancedMusicalIntelligence() {
+        // Initialize Phase 7+8: Advanced Musical Intelligence System
+        // This will be fully initialized after all dependencies are ready
+        console.log('🧠 Advanced Musical Intelligence initialization deferred - waiting for dependencies');
+    }
+    
     async startListening() {
         try {
             this.statusText.textContent = 'Requesting microphone access...';
@@ -314,6 +415,16 @@ class WhistleApp {
                     this.articulationIntegration
                 );
                 console.log('🎓 Real-time vocal coaching initialized (deferred)');
+            }
+            
+            // Initialize advanced musical intelligence now that all systems are ready
+            if (!this.musicalIntelligence && this.vocalTranscriptionEngine && this.articulationIntegration) {
+                this.musicalIntelligence = new AdvancedMusicalIntelligence(
+                    this.vocalTranscriptionEngine,
+                    this.articulationIntegration,
+                    this.pitchDetector
+                );
+                console.log('🧠 Advanced Musical Intelligence initialized (deferred)');
             }
             
             this.isListening = true;
@@ -812,6 +923,9 @@ Try playing with more consistent timing or more notes.`);
                 
                 // Real-time vocal coaching analysis
                 this.updateVocalCoaching(noteOnset);
+                
+                // Advanced musical intelligence analysis
+                this.updateMusicalIntelligence(noteOnset);
             }
         } else if (!this.skipNonCriticalUpdates) {
             // Still show current detection for debugging (throttled for performance)
