@@ -10,6 +10,9 @@ class WhistleApp {
         this.inputMode = 'vocal'; // Default to vocal mode
         this.realTimeQuantization = false; // Start with cadenza mode
         
+        // Real-time vocal coaching
+        this.vocalCoach = null;
+        
         // Performance optimization
         this.targetFrameRate = 60; // Target FPS for analysis loop
         this.lastFrameTime = 0;
@@ -36,6 +39,7 @@ class WhistleApp {
         this.initializeForensicAnalysis();
         this.initializeVocalTranscription();
         this.initializeArticulationIntegration();
+        this.initializeVocalCoaching();
     }
     
     initializeElements() {
@@ -104,7 +108,7 @@ class WhistleApp {
     }
     
     setupCanvas() {
-        this.notationRenderer = new NotationRenderer(this.canvas);
+        this.notationRenderer = new VocalNotationRenderer(this.canvas);
         this.notationRenderer.drawStaff();
     }
     
@@ -113,6 +117,51 @@ class WhistleApp {
         this.rhythmQuantizer.setTempo(120); // Default tempo
         this.rhythmQuantizer.setQuantizationLevel(16); // 16th note quantization
         this.rhythmQuantizer.enableAdaptiveQuantization(true);
+    }
+    
+    /**
+     * Update vocal notation with latest transcription data
+     */
+    updateVocalNotation() {
+        if (!this.notationRenderer || !this.vocalTranscriptionEngine) return;
+        
+        // Get latest transcription data if available
+        const transcriptionData = this.vocalTranscriptionEngine.getLatestTranscription();
+        const articulationData = this.articulationIntegration ? 
+            this.articulationIntegration.getLatestArticulationAnalysis() : null;
+        
+        // Update vocal notation with comprehensive data
+        if (transcriptionData || articulationData) {
+            this.notationRenderer.renderVocalScore(
+                this.notationRenderer.allNotes,  // Current pitch data
+                transcriptionData ? {
+                    syllables: transcriptionData.syllables || [],
+                    confidence: transcriptionData.confidence || 0
+                } : null,
+                articulationData
+            );
+        }
+    }
+    
+    /**
+     * Update vocal coaching with latest performance data
+     */
+    updateVocalCoaching(noteOnset) {
+        if (!this.vocalCoach || !noteOnset) return;
+        
+        // Get rhythm data if available
+        const rhythmData = this.rhythmQuantizer ? {
+            onsetTime: noteOnset.timestamp,
+            beat: this.rhythmQuantizer.currentBeat,
+            tempo: this.rhythmQuantizer.currentTempo
+        } : null;
+        
+        // Get articulation data if available
+        const articulationData = this.articulationIntegration ?
+            this.articulationIntegration.getLatestArticulationAnalysis() : null;
+        
+        // Analyze performance and get coaching feedback
+        this.vocalCoach.analyzePerformance(noteOnset, rhythmData, articulationData);
     }
     
     initializeStaffConfig() {
@@ -202,6 +251,23 @@ class WhistleApp {
         }
     }
     
+    initializeVocalCoaching() {
+        // Initialize real-time vocal coaching system
+        // Wait for other systems to be ready
+        if (this.audioHandler && this.pitchDetector && this.articulationIntegration) {
+            this.vocalCoach = new RealTimeVocalCoach(
+                this.audioHandler,
+                this.pitchDetector,
+                this.articulationIntegration
+            );
+            
+            console.log('🎓 Real-time vocal coaching initialized');
+        } else {
+            // Defer initialization until dependencies are ready
+            console.log('🎓 Vocal coaching deferred - waiting for dependencies');
+        }
+    }
+    
     async startListening() {
         try {
             this.statusText.textContent = 'Requesting microphone access...';
@@ -219,6 +285,16 @@ class WhistleApp {
             
             this.pitchDetector = new PitchDetector(this.audioHandler);
             
+            // Initialize vocal coach now that audio systems are ready
+            if (!this.vocalCoach && this.articulationIntegration) {
+                this.vocalCoach = new RealTimeVocalCoach(
+                    this.audioHandler,
+                    this.pitchDetector,
+                    this.articulationIntegration
+                );
+                console.log('🎓 Real-time vocal coaching initialized (deferred)');
+            }
+            
             this.isListening = true;
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
@@ -235,6 +311,11 @@ class WhistleApp {
                     mode: 'hybrid',
                     language: 'en-US'
                 });
+            }
+            
+            // Start vocal coaching session
+            if (this.vocalCoach) {
+                this.vocalCoach.startCoachingSession();
             }
             
             this.startAnalysisLoop();
@@ -346,6 +427,14 @@ class WhistleApp {
         if (this.vocalTranscriptionEngine) {
             const transcriptionResult = await this.vocalTranscriptionEngine.stopVocalTranscription();
             console.log('🎤 Vocal transcription stopped. Final result:', transcriptionResult);
+        }
+        
+        // Stop vocal coaching session and get summary
+        if (this.vocalCoach) {
+            const coachingSummary = this.vocalCoach.stopCoachingSession();
+            if (coachingSummary) {
+                console.log('🎓 Coaching session summary:', coachingSummary);
+            }
         }
         
         if (this.audioHandler) {
@@ -536,6 +625,11 @@ Try playing with more consistent timing or more notes.`);
             }
         }
         
+        // Trigger vocal notation update when switching to vocal mode
+        if (mode === 'vocal' && this.notationRenderer.allNotes.length > 0) {
+            this.updateVocalNotation();
+        }
+        
         console.log(`Input mode set to: ${mode}`);
     }
     
@@ -691,6 +785,12 @@ Try playing with more consistent timing or more notes.`);
                     // Cadenza mode - no quantization
                     this.notationRenderer.addNote(noteOnset);
                 }
+                
+                // Update vocal notation with latest transcription data
+                this.updateVocalNotation();
+                
+                // Real-time vocal coaching analysis
+                this.updateVocalCoaching(noteOnset);
             }
         } else if (!this.skipNonCriticalUpdates) {
             // Still show current detection for debugging (throttled for performance)
