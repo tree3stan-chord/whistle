@@ -327,4 +327,23 @@ class SignalConditioner {
             reduction_dB: -20 * Math.log10(Math.max(this.compressor.envelope, 1e-10))
         };
     }
+    
+    setNoiseGate(threshold) {
+        // Convert linear threshold (0.001-0.1) to dB
+        this.noiseGate.threshold = 20 * Math.log10(threshold);
+        this.calculateGateCoefficients();
+    }
+    
+    setSensitivity(sensitivity) {
+        // Sensitivity affects the compressor threshold and adaptive filter
+        // Higher sensitivity = lower threshold = more responsive to quiet sounds
+        const baseThreshold = -20;
+        this.compressor.threshold = baseThreshold + (1 - sensitivity) * 20; // -20dB to 0dB range
+        this.calculateCompressorCoefficients();
+        
+        // Also affects adaptive filter alpha (smoothing)
+        this.adaptiveFilter.alpha = 0.9 + sensitivity * 0.09; // 0.9 to 0.99 range
+        
+        console.log(`Sensitivity set to ${Math.round(sensitivity * 100)}%`);
+    }
 }

@@ -30,6 +30,7 @@ class WhistleApp {
         this.initializeStaffConfig();
         this.initializePlayhead();
         this.initializeRegisterDetector();
+        this.initializeAudioConfig();
     }
     
     initializeElements() {
@@ -121,12 +122,28 @@ class WhistleApp {
         console.log('RegisterDetector initialized for intelligent clef switching');
     }
     
+    async initializeAudioConfig() {
+        // Initialize audio configuration system
+        this.audioConfig = new AudioConfiguration(null, this);
+        await this.audioConfig.initialize();
+        
+        console.log('AudioConfiguration initialized');
+    }
+    
     async startListening() {
         try {
             this.statusText.textContent = 'Requesting microphone access...';
             
             this.audioHandler = new AudioHandler();
-            await this.audioHandler.initialize();
+            
+            // Get audio configuration if available
+            let audioConfig = null;
+            if (this.audioConfig) {
+                audioConfig = this.audioConfig.getConfiguration();
+                this.audioConfig.audioHandler = this.audioHandler;
+            }
+            
+            await this.audioHandler.initialize(audioConfig);
             
             this.pitchDetector = new PitchDetector(this.audioHandler);
             

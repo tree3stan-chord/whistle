@@ -4,36 +4,62 @@ class AudioHandler {
         this.microphone = null;
         this.analyser = null;
         this.mediaStream = null;
+        this.gainNode = null;
+        this.harmonicFilter = null;
+        this.signalConditioner = null;
     }
     
-    async initialize() {
+    async initialize(config = null) {
         try {
-            // Request microphone access
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+            // Use provided config or defaults
+            const audioConfig = config || {
+                deviceId: null,
+                inputGain: 1.0,
+                inputSensitivity: 0.3,
+                noiseGate: 0.02,
+                sampleRate: 44100
+            };
+            
+            // Request microphone access with specific device if configured
+            const constraints = {
                 audio: {
+                    deviceId: audioConfig.deviceId ? { exact: audioConfig.deviceId } : undefined,
                     echoCancellation: false,
                     autoGainControl: false,
                     noiseSuppression: false,
-                    sampleRate: 44100
+                    sampleRate: audioConfig.sampleRate
                 }
-            });
+            };
             
-            // Create audio context
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            // Create audio context with preferred sample rate
+            const audioContextOptions = {
+                sampleRate: audioConfig.sampleRate
+            };
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)(audioContextOptions);
             
             // Create harmonic filter for vocal processing (this creates the analyser internally)
             this.harmonicFilter = new HarmonicFilter(this.audioContext, this.audioContext.sampleRate);
             
-            // Connect audio pipeline: microphone -> harmonic filter -> analyser
-            this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.analyser = this.harmonicFilter.connectInput(this.microphone);
+            // Create gain node for input level control
+            this.gainNode = this.audioContext.createGain();
+            this.gainNode.gain.setValueAtTime(audioConfig.inputGain, this.audioContext.currentTime);
             
-            // Create signal conditioner with fixed buffer size (matches HarmonicFilter's 4096 fftSize)
+            // Connect audio pipeline: microphone -> gain -> harmonic filter -> analyser
+            this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
+            this.microphone.connect(this.gainNode);
+            this.analyser = this.harmonicFilter.connectInput(this.gainNode);
+            
+            // Create signal conditioner with configured parameters
             this.signalConditioner = new SignalConditioner(this.audioContext.sampleRate, 4096);
+            this.signalConditioner.setNoiseGate(audioConfig.noiseGate);
+            this.signalConditioner.setSensitivity(audioConfig.inputSensitivity);
             
             console.log('Audio initialized successfully');
             console.log('Sample rate:', this.audioContext.sampleRate);
             console.log('FFT size:', this.analyser.fftSize);
+            console.log('Input device:', this.mediaStream.getAudioTracks()[0].label);
             
         } catch (error) {
             throw new Error(`Audio initialization failed: ${error.message}`);
@@ -89,6 +115,27 @@ class AudioHandler {
         }
     }
     
+    getGainNode() {
+        return this.gainNode;
+    }
+    
+    setInputGain(gainValue) {
+        if (this.gainNode) {
+            this.gainNode.gain.setValueAtTime(gainValue, this.audioContext.currentTime);
+        }
+    }
+    
+    getCurrentDevice() {
+        if (this.mediaStream) {
+            const track = this.mediaStream.getAudioTracks()[0];
+            return {
+                id: track.getSettings().deviceId,
+                label: track.label
+            };
+        }
+        return null;
+    }
+    
     stop() {
         if (this.mediaStream) {
             this.mediaStream.getTracks().forEach(track => track.stop());
@@ -102,6 +149,9 @@ class AudioHandler {
         
         this.microphone = null;
         this.analyser = null;
+        this.gainNode = null;
+        this.harmonicFilter = null;
+        this.signalConditioner = null;
         
         console.log('Audio stopped');
     }
