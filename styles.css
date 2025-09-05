@@ -102,45 +102,7 @@ body {
 
 /* ===== LAYOUT COMPONENTS ===== */
 
-/* Top Navigation Bar */
-.top-navbar {
-    background: rgba(0, 0, 0, 0.95);
-    border-bottom: 1px solid var(--border-color);
-    height: 60px;
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-}
-
-.navbar-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    height: 60px;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 24px;
-}
-
-.navbar-brand .logo {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--primary-500);
-    margin: 0;
-}
-
-.navbar-controls {
-    display: flex;
-    align-items: center;
-    gap: 32px;
-}
-
-.control-group {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
+/* Navbar buttons */
 .navbar-btn {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -148,12 +110,8 @@ body {
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 14px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
-    height: 36px;
     font-family: inherit;
 }
 
@@ -161,17 +119,6 @@ body {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.2);
     color: var(--text-primary);
-}
-
-.auth-display {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.auth-status {
-    font-size: 14px;
-    color: var(--text-muted);
 }
 
 .connectivity-indicator {

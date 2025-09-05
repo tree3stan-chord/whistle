@@ -197,56 +197,6 @@
     color: var(--text-secondary);
 }
 
-/* Responsive adjustments for navbar */
-@media (max-width: 900px) {
-    .navbar-controls {
-        gap: var(--space-md);
-    }
-    
-    .control-group {
-        gap: var(--space-sm);
-    }
-    
-    .btn-label {
-        display: none;
-    }
-    
-    .navbar-btn {
-        padding: var(--space-sm);
-        min-width: 36px;
-        justify-content: center;
-    }
-}
-
-@media (max-width: 480px) {
-    .top-navbar {
-        height: auto;
-        padding: var(--space-sm) 0;
-    }
-    
-    .navbar-content {
-        flex-direction: column;
-        gap: var(--space-md);
-        align-items: center;
-        padding: 0 var(--space-md);
-    }
-    
-    .navbar-brand {
-        text-align: center;
-    }
-    
-    .navbar-controls {
-        justify-content: center;
-        gap: var(--space-sm);
-        flex-wrap: wrap;
-        width: 100%;
-    }
-    
-    .app-main {
-        padding: var(--space-md);
-        min-height: auto;
-    }
-}
 
 /* Responsive adjustments for staff controls */
 @media (max-width: 768px) {
