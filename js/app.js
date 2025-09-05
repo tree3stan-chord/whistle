@@ -34,9 +34,9 @@ class WhistleApp {
         
         this.initializeElements();
         this.bindEvents();
-        this.setupCanvas();
         this.initializeQuantizer();
         this.initializeStaffConfig();
+        this.setupCanvas();
         this.initializePlayhead();
         this.initializeRegisterDetector();
         // Skip AudioConfig initialization - only initialize when actually starting audio
@@ -190,9 +190,21 @@ class WhistleApp {
         }
         
         this.notationRenderer = new VocalNotationRenderer(this.canvas);
-        this.notationRenderer.drawStaff();
+        console.log('VocalNotationRenderer created');
         
-        console.log('Staff drawn');
+        // Apply initial configuration from StaffConfig once it's initialized
+        if (this.staffConfig) {
+            console.log('Applying staff config:', this.staffConfig.getConfiguration());
+            this.notationRenderer.updateConfiguration(this.staffConfig.getConfiguration());
+        } else {
+            console.log('No staff config available');
+        }
+        
+        console.log('About to draw staff...');
+        this.notationRenderer.drawStaff();
+        console.log('drawStaff() completed');
+        
+        console.log('Staff drawn with configuration');
     }
     
     initializeQuantizer() {
