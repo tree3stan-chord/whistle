@@ -31,6 +31,7 @@ class WhistleApp {
         this.initializePlayhead();
         this.initializeRegisterDetector();
         this.initializeAudioConfig();
+        this.initializeEnhancedExport();
     }
     
     initializeElements() {
@@ -41,6 +42,11 @@ class WhistleApp {
         this.quantizeToggleBtn = document.getElementById('quantizeToggleBtn');
         this.exportPngBtn = document.getElementById('exportPngBtn');
         this.exportJsonBtn = document.getElementById('exportJsonBtn');
+        this.exportMidiBtn = document.getElementById('exportMidiBtn');
+        this.exportMusicXmlBtn = document.getElementById('exportMusicXmlBtn');
+        this.exportSvgBtn = document.getElementById('exportSvgBtn');
+        this.exportPdfBtn = document.getElementById('exportPdfBtn');
+        this.exportAllBtn = document.getElementById('exportAllBtn');
         this.vocalModeBtn = document.getElementById('vocalModeBtn');
         this.instrumentModeBtn = document.getElementById('instrumentModeBtn');
         this.statusText = document.getElementById('statusText');
@@ -68,6 +74,11 @@ class WhistleApp {
         this.quantizeToggleBtn.addEventListener('click', () => this.toggleQuantization());
         this.exportPngBtn.addEventListener('click', () => this.exportPng());
         this.exportJsonBtn.addEventListener('click', () => this.exportJson());
+        this.exportMidiBtn.addEventListener('click', () => this.exportMIDI());
+        this.exportMusicXmlBtn.addEventListener('click', () => this.exportMusicXML());
+        this.exportSvgBtn.addEventListener('click', () => this.exportSVG());
+        this.exportPdfBtn.addEventListener('click', () => this.exportPDF());
+        this.exportAllBtn.addEventListener('click', () => this.exportAll());
         this.vocalModeBtn.addEventListener('click', () => this.setInputMode('vocal'));
         this.instrumentModeBtn.addEventListener('click', () => this.setInputMode('instrument'));
         
@@ -128,6 +139,12 @@ class WhistleApp {
         await this.audioConfig.initialize();
         
         console.log('AudioConfiguration initialized');
+    }
+    
+    initializeEnhancedExport() {
+        // Initialize enhanced export system
+        this.enhancedExport = new EnhancedExport(this.notationRenderer, this.staffConfig);
+        console.log('EnhancedExport initialized');
     }
     
     async startListening() {
@@ -205,6 +222,67 @@ class WhistleApp {
     
     exportJson() {
         this.notationRenderer.exportJson();
+    }
+    
+    // Enhanced export methods
+    exportMIDI() {
+        try {
+            this.enhancedExport.exportMIDI();
+            this.statusText.textContent = 'MIDI export completed!';
+            setTimeout(() => this.statusText.textContent = 'Ready', 2000);
+        } catch (error) {
+            console.error('MIDI export failed:', error);
+            this.statusText.textContent = `MIDI export failed: ${error.message}`;
+            setTimeout(() => this.statusText.textContent = 'Ready', 3000);
+        }
+    }
+    
+    exportMusicXML() {
+        try {
+            this.enhancedExport.exportMusicXML();
+            this.statusText.textContent = 'MusicXML export completed!';
+            setTimeout(() => this.statusText.textContent = 'Ready', 2000);
+        } catch (error) {
+            console.error('MusicXML export failed:', error);
+            this.statusText.textContent = `MusicXML export failed: ${error.message}`;
+            setTimeout(() => this.statusText.textContent = 'Ready', 3000);
+        }
+    }
+    
+    exportSVG() {
+        try {
+            this.enhancedExport.exportSVG();
+            this.statusText.textContent = 'SVG export completed!';
+            setTimeout(() => this.statusText.textContent = 'Ready', 2000);
+        } catch (error) {
+            console.error('SVG export failed:', error);
+            this.statusText.textContent = `SVG export failed: ${error.message}`;
+            setTimeout(() => this.statusText.textContent = 'Ready', 3000);
+        }
+    }
+    
+    exportPDF() {
+        try {
+            this.enhancedExport.exportPDF();
+            this.statusText.textContent = 'PDF export completed!';
+            setTimeout(() => this.statusText.textContent = 'Ready', 2000);
+        } catch (error) {
+            console.error('PDF export failed:', error);
+            this.statusText.textContent = `PDF export failed: ${error.message}`;
+            setTimeout(() => this.statusText.textContent = 'Ready', 3000);
+        }
+    }
+    
+    exportAll() {
+        try {
+            this.enhancedExport.exportAll();
+            this.statusText.textContent = 'Batch export started! Files will download sequentially...';
+            setTimeout(() => this.statusText.textContent = 'Ready', 5000);
+        } catch (error) {
+            console.error('Batch export failed:', error);
+            this.statusText.textContent = `Batch export failed: ${error.message}`;
+            setTimeout(() => this.statusText.textContent = 'Ready', 3000);
+        }
     }
     
     analyzeRecordedRhythm() {
