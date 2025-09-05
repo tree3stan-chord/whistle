@@ -37,7 +37,7 @@ echo "▶ Build frontend for production"
 cd "$OUT"
 # Copy frontend files to public directory
 mkdir -p public
-cp -r js css images index.html public/
+cp -r js index.html styles.css public/
 
 echo "▶ Publish release"
 rsync -az --delete "$OUT"/ /var/www/whistle.musicsian.com/releases/$STAMP/
