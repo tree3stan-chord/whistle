@@ -6,44 +6,51 @@
     <title>Whistle - Real-time Pitch to Staff Notation</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="css/coaching.css">
+    <link rel="stylesheet" href="css/essential-ai.css">
+    <link rel="stylesheet" href="css/staff-controls.css">
 </head>
 <body>
-    <header class="app-header">
-        <div class="header-content">
-            <div class="brand">
-                <h1>🎵 whistle 🎵</h1>
-                <p>Real-time pitch-to-staff notation</p>
+    <!-- Top Navigation Bar -->
+    <nav class="top-navbar">
+        <div class="navbar-content">
+            <!-- Brand/Logo -->
+            <div class="navbar-brand">
+                <h1 class="logo">🎵 whistle</h1>
             </div>
-            <div class="header-actions">
+            
+            <!-- Session & User Controls -->
+            <div class="navbar-controls">
                 <!-- Session Management -->
-                <div class="session-controls">
-                    <button id="saveSessionBtn" class="icon-btn" title="Save Session">
-                        <span>💾</span>
+                <div class="control-group">
+                    <button id="saveSessionBtn" class="navbar-btn" title="Save Session">
+                        <span class="btn-icon">💾</span>
+                        <span class="btn-label">Save</span>
                     </button>
-                    <button id="loadSessionBtn" class="icon-btn" title="Load Session">
-                        <span>📂</span>
+                    <button id="loadSessionBtn" class="navbar-btn" title="Load Session">
+                        <span class="btn-icon">📂</span>
+                        <span class="btn-label">Load</span>
                     </button>
-                    <div id="connectivityStatus" class="connectivity-status online">●</div>
+                    <div id="connectivityStatus" class="connectivity-indicator online" title="Connection Status">●</div>
                 </div>
                 
-                <!-- Auth Status -->
-                <div class="auth-controls">
-                    <span id="authInfo" class="auth-info">Guest session</span>
-                    <button id="authBtn" class="icon-btn" title="Login / Register">
-                        <span>👤</span>
+                <!-- Auth & System -->
+                <div class="control-group">
+                    <div class="auth-display">
+                        <span id="authInfo" class="auth-status">Guest session</span>
+                        <button id="authBtn" class="navbar-btn auth-btn" title="Login / Register">
+                            <span class="btn-icon">👤</span>
+                        </button>
+                    </div>
+                    <button id="debugToggle" class="navbar-btn debug-btn" title="Toggle Debug View">
+                        <span class="btn-icon">🔧</span>
+                    </button>
+                    <button id="fullscreenBtn" class="navbar-btn" title="Fullscreen">
+                        <span class="btn-icon">⛶</span>
                     </button>
                 </div>
-                
-                <!-- Debug and Fullscreen -->
-                <button id="debugToggle" class="icon-btn" title="Toggle Debug View">
-                    <span>🔧</span>
-                </button>
-                <button id="fullscreenBtn" class="icon-btn" title="Fullscreen">
-                    <span>⛶</span>
-                </button>
             </div>
         </div>
-    </header>
+    </nav>
 
     <main class="app-main">
         <!-- Primary controls section -->
@@ -59,68 +66,31 @@
                 </button>
             </div>
             
-            <div class="secondary-controls">
-                <button id="clearBtn" type="button" class="secondary-btn">
-                    <span class="btn-icon">🗑</span>
-                    <span class="btn-text">Clear</span>
-                </button>
-                <button id="analyzeRhythmBtn" type="button" class="secondary-btn">
-                    <span class="btn-icon">🎵</span>
-                    <span class="btn-text">Analyze Rhythm</span>
-                </button>
-                <button id="quantizeToggleBtn" type="button" class="secondary-btn" disabled>
-                    <span class="btn-icon">📏</span>
-                    <span class="btn-text">Enable Quantization</span>
-                </button>
-            </div>
         </div>
 
-        <!-- Mode and export controls -->
-        <div class="utility-controls">
-            <div class="input-mode-section">
-                <label class="section-label">Input Mode:</label>
-                <div class="mode-buttons">
-                    <button id="vocalModeBtn" type="button" class="mode-btn active">
-                        <span class="mode-icon">🎤</span>
-                        <span>Vocal</span>
-                    </button>
-                    <button id="instrumentModeBtn" type="button" class="mode-btn">
-                        <span class="mode-icon">🎼</span>
-                        <span>Whistle/Instrument</span>
-                    </button>
+        <!-- Advanced Export Modal (accessible via Export All) -->
+        <div id="exportModal" class="export-modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Export Options</h3>
+                    <button class="modal-close">&times;</button>
                 </div>
-            </div>
-            
-            <div class="export-section">
-                <label class="section-label">Export:</label>
-                <div class="export-buttons">
-                    <button id="exportPngBtn" type="button" class="export-btn">
-                        <span class="btn-icon">🖼</span>
-                        <span class="btn-text">PNG</span>
-                    </button>
-                    <button id="exportJsonBtn" type="button" class="export-btn">
+                <div class="export-grid">
+                    <button id="exportJsonBtn" type="button" class="export-option">
                         <span class="btn-icon">📄</span>
                         <span class="btn-text">JSON</span>
                     </button>
-                    <button id="exportMidiBtn" type="button" class="export-btn">
-                        <span class="btn-icon">🎹</span>
-                        <span class="btn-text">MIDI</span>
-                    </button>
-                    <button id="exportMusicXmlBtn" type="button" class="export-btn">
+                    <button id="exportMusicXmlBtn" type="button" class="export-option">
                         <span class="btn-icon">🎼</span>
-                        <span class="btn-text">XML</span>
+                        <span class="btn-text">MusicXML</span>
                     </button>
-                    <button id="exportSvgBtn" type="button" class="export-btn">
+                    <button id="exportSvgBtn" type="button" class="export-option">
                         <span class="btn-icon">📊</span>
                         <span class="btn-text">SVG</span>
                     </button>
-                    <button id="exportPdfBtn" type="button" class="export-btn">
+                    <button id="exportPdfBtn" type="button" class="export-option">
                         <span class="btn-icon">📋</span>
                         <span class="btn-text">PDF</span>
-                    </button>
-                    <button id="exportAllBtn" type="button" class="export-btn export-all">
-                        <span class="btn-icon">📦</span>
-                        <span class="btn-text">All</span>
                     </button>
                 </div>
             </div>
@@ -134,6 +104,58 @@
             <div class="pitch-info">
                 <span id="pitchDisplay" class="pitch-display">--</span>
                 <span class="pitch-label">Current Note</span>
+            </div>
+        </div>
+
+        <!-- Staff Controls (directly above staff) -->
+        <div class="staff-controls">
+            <div class="staff-controls-left">
+                <div class="input-mode-selector">
+                    <label class="control-label">Mode:</label>
+                    <div class="mode-buttons">
+                        <button id="vocalModeBtn" type="button" class="mode-btn active">
+                            <span class="mode-icon">🎤</span>
+                            <span>Vocal</span>
+                        </button>
+                        <button id="instrumentModeBtn" type="button" class="mode-btn">
+                            <span class="mode-icon">🎼</span>
+                            <span>Instrument</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="staff-actions">
+                    <button id="clearBtn" type="button" class="staff-btn clear-btn">
+                        <span class="btn-icon">🗑</span>
+                        <span class="btn-text">Clear Staff</span>
+                    </button>
+                    <button id="analyzeRhythmBtn" type="button" class="staff-btn">
+                        <span class="btn-icon">🎵</span>
+                        <span class="btn-text">Analyze Rhythm</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="staff-controls-right">
+                <div class="quantization-control">
+                    <button id="quantizeToggleBtn" type="button" class="staff-btn quantize-btn" disabled>
+                        <span class="btn-icon">📏</span>
+                        <span class="btn-text">Enable Quantization</span>
+                    </button>
+                </div>
+                
+                <div class="export-quick">
+                    <button id="exportPngBtn" type="button" class="staff-btn export-btn">
+                        <span class="btn-icon">🖼</span>
+                    </button>
+                    <button id="exportMidiBtn" type="button" class="staff-btn export-btn">
+                        <span class="btn-icon">🎹</span>
+                    </button>
+                    <button id="exportAllBtn" type="button" class="staff-btn export-all-btn">
+                        <span class="btn-icon">📦</span>
+                        <span class="btn-text">Export All</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -334,6 +356,9 @@
     
     <!-- Phase 7+8: Advanced Musical Intelligence -->
     <script src="js/advanced-musical-intelligence.js"></script>
+    
+    <!-- Essential AI Utilities -->
+    <script src="js/essential-ai-utilities.js"></script>
     
     <script src="js/app.js"></script>
 </body>

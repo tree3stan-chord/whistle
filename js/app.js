@@ -16,6 +16,9 @@ class WhistleApp {
         // Phase 7+8: Advanced Musical Intelligence
         this.musicalIntelligence = null;
         
+        // Essential AI utilities
+        this.essentialAI = null;
+        
         // Performance optimization
         this.targetFrameRate = 60; // Target FPS for analysis loop
         this.lastFrameTime = 0;
@@ -44,6 +47,7 @@ class WhistleApp {
         this.initializeArticulationIntegration();
         this.initializeVocalCoaching();
         this.initializeAdvancedMusicalIntelligence();
+        this.initializeEssentialAI();
     }
     
     initializeElements() {
@@ -166,8 +170,101 @@ class WhistleApp {
         
         // Analyze performance and get coaching feedback
         this.vocalCoach.analyzePerformance(noteOnset, rhythmData, articulationData);
+        
+        // Essential AI analysis for practical feedback
+        if (this.essentialAI && noteOnset) {
+            this.analyzeWithEssentialAI(noteOnset, rhythmData, articulationData);
+        }
     }
     
+    /**
+     * Analyze with essential AI utilities for practical feedback
+     */
+    analyzeWithEssentialAI(noteOnset, rhythmData, articulationData) {
+        try {
+            // Quick pitch accuracy check
+            if (noteOnset.expectedFreq) {
+                const pitchFeedback = this.essentialAI.classifyPitchDeviation(
+                    { frequency: noteOnset.frequency, stability: noteOnset.stability, attack: noteOnset.attack },
+                    noteOnset.expectedFreq,
+                    { hasVibrato: articulationData?.vibrato > 0.3 }
+                );
+                
+                if (pitchFeedback.type === 'error' && pitchFeedback.confidence > 0.7) {
+                    this.displayQuickFeedback(`Pitch: ${Math.round(pitchFeedback.correction)}Hz suggested`, 'warning');
+                }
+            }
+            
+            // Quick rhythm check
+            if (rhythmData && rhythmData.expectedBeat) {
+                const rhythmFeedback = this.essentialAI.detectRhythmIssues(
+                    { actual: rhythmData.currentBeat },
+                    rhythmData.expectedBeat
+                );
+                
+                if (rhythmFeedback.issue !== 'none') {
+                    this.displayQuickFeedback(`Timing: ${rhythmFeedback.suggestion}`, 'info');
+                }
+            }
+            
+            // Basic chord suggestions for melody line
+            if (this.notationRenderer.allNotes && this.notationRenderer.allNotes.length > 3) {
+                const recentNotes = this.notationRenderer.allNotes.slice(-6);
+                const chordSuggestions = this.essentialAI.suggestBasicChords(recentNotes);
+                
+                if (chordSuggestions.length > 0) {
+                    const bestChord = chordSuggestions[0];
+                    if (bestChord.confidence > 0.75) {
+                        this.displayQuickFeedback(`Chord: ${bestChord.chord}`, 'suggestion');
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.warn('Essential AI analysis error:', error);
+        }
+    }
+    
+    /**
+     * Display quick feedback without UI overhead
+     */
+    displayQuickFeedback(message, type = 'info') {
+        // Only show feedback if coaching is enabled
+        if (!this.vocalCoach) return;
+        
+        // Throttle feedback to prevent spam
+        if (!this.lastFeedbackTime) this.lastFeedbackTime = 0;
+        const now = Date.now();
+        if (now - this.lastFeedbackTime < 2000) return;
+        
+        this.lastFeedbackTime = now;
+        
+        // Find or create feedback element
+        let feedbackElement = document.getElementById('ai-quick-feedback');
+        if (!feedbackElement) {
+            feedbackElement = document.createElement('div');
+            feedbackElement.id = 'ai-quick-feedback';
+            feedbackElement.className = 'ai-feedback-overlay';
+            document.body.appendChild(feedbackElement);
+        }
+        
+        // Style based on type
+        const typeClasses = {
+            warning: 'feedback-warning',
+            info: 'feedback-info',
+            suggestion: 'feedback-suggestion'
+        };
+        
+        feedbackElement.className = `ai-feedback-overlay ${typeClasses[type] || 'feedback-info'}`;
+        feedbackElement.textContent = message;
+        feedbackElement.style.display = 'block';
+        
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+            feedbackElement.style.display = 'none';
+        }, 3000);
+    }
+
     /**
      * Update advanced musical intelligence with latest performance data
      */
@@ -388,6 +485,12 @@ class WhistleApp {
         // Initialize Phase 7+8: Advanced Musical Intelligence System
         // This will be fully initialized after all dependencies are ready
         console.log('🧠 Advanced Musical Intelligence initialization deferred - waiting for dependencies');
+    }
+
+    initializeEssentialAI() {
+        // Initialize lightweight AI utilities
+        this.essentialAI = new EssentialAIUtilities();
+        console.log('🤖 Essential AI utilities initialized');
     }
     
     async startListening() {

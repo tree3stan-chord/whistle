@@ -16,22 +16,20 @@ cd "$OUT/backend"
 if [ ! -f package-lock.json ]; then
     echo "  → Generating package-lock.json..."
     npm install --package-lock-only
+else
+    echo "  → Checking package-lock.json sync..."
+    # Check if package-lock is in sync with package.json
+    if ! npm ci --dry-run --silent 2>/dev/null; then
+        echo "  → Package-lock out of sync, regenerating..."
+        rm -f package-lock.json
+        npm install --package-lock-only
+    fi
 fi
 npm ci --omit=dev
 
-echo "▶ Initialize database"
+echo "▶ Prepare backend directories"
 cd "$OUT/backend"
 mkdir -p data logs
-node -e "
-const { initDatabase } = require('./config/database');
-initDatabase().then(() => {
-  console.log('Database initialized successfully');
-  process.exit(0);
-}).catch(err => {
-  console.error('Database initialization failed:', err);
-  process.exit(1);
-});
-"
 
 echo "▶ Build frontend for production"
 cd "$OUT"
@@ -63,8 +61,9 @@ ExecStart=/usr/bin/node /var/www/whistle.musicsian.com/current/backend/server.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
-Environment=PORT=3001
+Environment=PORT=3002
 Environment=HOST=127.0.0.1
+Environment=DATABASE_PATH=/var/www/whistle.musicsian.com/current/backend/data/whistle.db
 Environment=JWT_SECRET=$(openssl rand -hex 32)
 
 # Logging
@@ -81,6 +80,10 @@ sudo chown -R nginx:nginx /var/www/whistle.musicsian.com/current/backend/
 sudo chmod -R 755 /var/www/whistle.musicsian.com/current/backend/
 sudo chmod -R 775 /var/www/whistle.musicsian.com/current/backend/data/
 sudo chmod -R 775 /var/www/whistle.musicsian.com/current/backend/logs/
+# Ensure database directory is writable by nginx user
+sudo mkdir -p /var/www/whistle.musicsian.com/current/backend/data
+sudo chown nginx:nginx /var/www/whistle.musicsian.com/current/backend/data
+sudo chmod 775 /var/www/whistle.musicsian.com/current/backend/data
 
 echo "▶ Reload systemd and start backend"
 sudo systemctl daemon-reload
@@ -89,7 +92,7 @@ sudo systemctl start whistle-backend
 
 echo "▶ Wait for backend to start"
 sleep 3
-if ! curl -f http://127.0.0.1:3001/health >/dev/null 2>&1; then
+if ! curl -f http://127.0.0.1:3002/health >/dev/null 2>&1; then
   echo "❌ Backend health check failed!"
   sudo journalctl -u whistle-backend --lines=20
   exit 1
@@ -97,6 +100,9 @@ fi
 
 echo "▶ Restore SELinux labels"
 sudo restorecon -Rv /var/www/whistle.musicsian.com/releases/$STAMP >/dev/null
+
+echo "▶ Update Nginx configuration for new port"
+sudo sed -i 's/server 127\.0\.0\.1:3001;/server 127.0.0.1:3002;/' /etc/nginx/conf.d/whistle.musicsian.com.conf
 
 echo "▶ Reload Nginx"
 sudo systemctl reload nginx
@@ -106,7 +112,7 @@ cd /var/www/whistle.musicsian.com/releases
 ls -1t | tail -n +6 | xargs -r sudo rm -rf
 
 echo "✓ Deployed $STAMP → whistle.musicsian.com"
-echo "✓ Backend running on http://127.0.0.1:3001"
+echo "✓ Backend running on http://127.0.0.1:3002"
 echo "✓ Frontend served by nginx with API proxy"
 
 # Show service status

@@ -1,0 +1,69 @@
+/* Essential AI Quick Feedback Overlay */
+.ai-feedback-overlay {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 1000;
+    pointer-events: none;
+    display: none;
+    border-left: 4px solid #007acc;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    max-width: 280px;
+    word-wrap: break-word;
+    animation: slideInFade 0.3s ease-out;
+}
+
+@keyframes slideInFade {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Feedback type variants */
+.feedback-warning {
+    border-left-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+    color: #ff6b6b;
+}
+
+.feedback-info {
+    border-left-color: #4ecdc4;
+    background: rgba(78, 205, 196, 0.1);
+    color: #4ecdc4;
+}
+
+.feedback-suggestion {
+    border-left-color: #45b7d1;
+    background: rgba(69, 183, 209, 0.1);
+    color: #45b7d1;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .ai-feedback-overlay {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+        font-size: 13px;
+        text-align: center;
+    }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .ai-feedback-overlay {
+        animation: none;
+    }
+}
