@@ -27,6 +27,7 @@ class WhistleApp {
         this.bindEvents();
         this.setupCanvas();
         this.initializeQuantizer();
+        this.initializeStaffConfig();
     }
     
     initializeElements() {
@@ -73,6 +74,18 @@ class WhistleApp {
         this.rhythmQuantizer.setTempo(120); // Default tempo
         this.rhythmQuantizer.setQuantizationLevel(16); // 16th note quantization
         this.rhythmQuantizer.enableAdaptiveQuantization(true);
+    }
+    
+    initializeStaffConfig() {
+        // Initialize staff configuration system
+        this.staffConfig = new StaffConfiguration(this.notationRenderer, this);
+        
+        // Apply initial configuration from saved settings
+        const config = this.staffConfig.getConfiguration();
+        if (this.rhythmQuantizer) {
+            this.rhythmQuantizer.setTempo(config.tempo);
+            this.rhythmQuantizer.setQuantizationLevel(config.quantizationLevel);
+        }
     }
     
     async startListening() {

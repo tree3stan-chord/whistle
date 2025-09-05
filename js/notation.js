@@ -18,10 +18,12 @@ class NotationRenderer {
         this.stemLength = 28;         // Standard stem length (3.5 staff spaces)
         this.noteSpacing = 32;        // Space between note heads
         
-        // Musical typography (FOSS notation standards)
+        // Musical typography (FOSS notation standards) - configurable
         this.clefType = 'treble';
         this.keySignature = 'C';      // C major (no sharps/flats)
         this.timeSignature = [4, 4];  // 4/4 time
+        this.tempo = 120;             // BPM
+        this.showBeatGrid = true;     // Visual beat markers
         
         // Layout management
         this.measureWidth = 160;      // Compact measure width
@@ -531,5 +533,30 @@ class NotationRenderer {
         URL.revokeObjectURL(url);
         
         console.log(`Exported JSON: ${filename} (${this.allNotes.length} notes)`);
+    }
+    
+    // Configuration update method
+    updateConfiguration(config) {
+        // Update notation settings
+        this.clefType = config.clef || this.clefType;
+        this.keySignature = config.keySignature || this.keySignature;
+        this.timeSignature = [config.timeSignature.numerator || 4, config.timeSignature.denominator || 4];
+        this.tempo = config.tempo || this.tempo;
+        this.showBeatGrid = config.showBeatGrid !== undefined ? config.showBeatGrid : this.showBeatGrid;
+        
+        // Update measures per line based on time signature
+        this.notesPerMeasure = config.timeSignature.numerator || 4;
+        
+        // Clear and redraw with new configuration
+        this.clear();
+        this.drawStaff();
+        
+        console.log('Notation configuration updated:', {
+            clef: this.clefType,
+            key: this.keySignature,
+            timeSignature: this.timeSignature,
+            tempo: this.tempo,
+            showBeatGrid: this.showBeatGrid
+        });
     }
 }
