@@ -35,6 +35,7 @@ class WhistleApp {
         this.initializeSessionManager();
         this.initializeForensicAnalysis();
         this.initializeVocalTranscription();
+        this.initializeArticulationIntegration();
     }
     
     initializeElements() {
@@ -185,6 +186,22 @@ class WhistleApp {
         }
     }
     
+    initializeArticulationIntegration() {
+        // Initialize comprehensive articulation analysis integration
+        if (this.vocalTranscriptionEngine && this.forensicIntegration) {
+            this.articulationIntegration = new ArticulationTranscriptionIntegration(
+                this.vocalTranscriptionEngine,
+                this.forensicIntegration
+            );
+            
+            this.setupArticulationEventListeners();
+            
+            console.log('🎭 Advanced Articulation Analysis Integration initialized - Complete vocal performance analysis ready!');
+        } else {
+            console.warn('Articulation integration requires vocal transcription and forensic analysis');
+        }
+    }
+    
     async startListening() {
         try {
             this.statusText.textContent = 'Requesting microphone access...';
@@ -268,6 +285,52 @@ class WhistleApp {
     handleAlignmentComplete(detail) {
         // Handle completed syllable-to-note alignments
         console.log('Alignment complete:', detail.alignedSyllables?.length || 0, 'syllables aligned');
+    }
+    
+    setupArticulationEventListeners() {
+        // Listen for comprehensive articulation analysis results
+        document.addEventListener('articulation-analysis-complete', (event) => {
+            this.handleArticulationAnalysisComplete(event.detail);
+        });
+        
+        document.addEventListener('realtime-articulation-hints', (event) => {
+            this.handleRealtimeArticulationHints(event.detail);
+        });
+        
+        document.addEventListener('articulation-analysis-error', (event) => {
+            console.error('Articulation analysis error:', event.detail.error);
+        });
+        
+        console.log('Articulation analysis event listeners established');
+    }
+    
+    handleArticulationAnalysisComplete(detail) {
+        // Handle comprehensive articulation analysis completion
+        console.log('🎭 Comprehensive articulation analysis complete!');
+        console.log('Performance Level:', detail.performanceProfile?.summary?.level);
+        console.log('Technical Score:', Math.round((detail.performanceProfile?.technical?.score || 0) * 100) + '%');
+        console.log('Musical Score:', Math.round((detail.performanceProfile?.musical?.score || 0) * 100) + '%');
+        
+        // Update status with performance summary
+        if (detail.performanceProfile?.summary) {
+            const summary = detail.performanceProfile.summary;
+            this.statusText.textContent = `Analysis complete - Level: ${summary.level} (${summary.overallScore}%)`;
+        }
+        
+        // Store results for potential export/display
+        this.lastArticulationResults = detail;
+    }
+    
+    handleRealtimeArticulationHints(detail) {
+        // Handle real-time articulation coaching hints
+        let hints = [];
+        if (detail.vibrato) hints.push(detail.vibrato);
+        if (detail.breathing) hints.push(detail.breathing);
+        if (detail.dynamics) hints.push(detail.dynamics);
+        
+        if (hints.length > 0) {
+            console.log('🎯 Real-time hints:', hints.join(', '));
+        }
     }
     
     async stopListening() {
