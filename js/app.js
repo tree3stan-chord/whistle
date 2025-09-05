@@ -29,6 +29,7 @@ class WhistleApp {
         this.initializeQuantizer();
         this.initializeStaffConfig();
         this.initializePlayhead();
+        this.initializeRegisterDetector();
     }
     
     initializeElements() {
@@ -43,6 +44,11 @@ class WhistleApp {
         this.instrumentModeBtn = document.getElementById('instrumentModeBtn');
         this.statusText = document.getElementById('statusText');
         this.pitchDisplay = document.getElementById('pitchDisplay');
+        
+        // New UI elements
+        this.debugToggle = document.getElementById('debugToggle');
+        this.fullscreenBtn = document.getElementById('fullscreenBtn');
+        this.debugPanel = document.getElementById('debugPanel');
         this.freqDisplay = document.getElementById('freqDisplay');
         this.noteDisplay = document.getElementById('noteDisplay');
         this.onsetDisplay = document.getElementById('onsetDisplay');
@@ -63,6 +69,10 @@ class WhistleApp {
         this.exportJsonBtn.addEventListener('click', () => this.exportJson());
         this.vocalModeBtn.addEventListener('click', () => this.setInputMode('vocal'));
         this.instrumentModeBtn.addEventListener('click', () => this.setInputMode('instrument'));
+        
+        // New UI event handlers
+        this.debugToggle.addEventListener('click', () => this.toggleDebugPanel());
+        this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
     }
     
     setupCanvas() {
@@ -99,6 +109,16 @@ class WhistleApp {
         // Apply initial configuration
         const config = this.staffConfig.getConfiguration();
         this.playhead.updateConfiguration(config);
+    }
+    
+    initializeRegisterDetector() {
+        // Initialize intelligent register detection
+        this.registerDetector = new RegisterDetector(this.notationRenderer);
+        
+        // Connect register detector to notation renderer
+        this.notationRenderer.setRegisterDetector(this.registerDetector);
+        
+        console.log('RegisterDetector initialized for intelligent clef switching');
     }
     
     async startListening() {
@@ -155,6 +175,11 @@ class WhistleApp {
     clearNotation() {
         this.notationRenderer.clear();
         this.notationRenderer.drawStaff();
+        
+        // Reset register detector
+        if (this.registerDetector) {
+            this.registerDetector.reset();
+        }
     }
     
     exportPng() {
@@ -331,6 +356,28 @@ Try playing with more consistent timing or more notes.`);
         console.log('Quantization', this.realTimeQuantization ? 'enabled' : 'disabled');
     }
     
+    toggleDebugPanel() {
+        this.debugPanel.classList.toggle('hidden');
+        
+        // Update button state
+        if (this.debugPanel.classList.contains('hidden')) {
+            this.debugToggle.style.opacity = '0.7';
+        } else {
+            this.debugToggle.style.opacity = '1';
+            this.debugPanel.classList.add('fade-in');
+        }
+    }
+    
+    toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                console.log('Error attempting to enable fullscreen:', err.message);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+    
     resetButtons() {
         this.startBtn.disabled = false;
         this.stopBtn.disabled = true;
@@ -380,6 +427,11 @@ Try playing with more consistent timing or more notes.`);
             
             // Add note to staff when new note is detected
             if (noteOnset.isNewNote) {
+                // Analyze register and potentially change clef
+                if (this.registerDetector) {
+                    this.registerDetector.analyzeNote(noteOnset);
+                }
+                
                 // Apply rhythm quantization if enabled
                 if (this.realTimeQuantization && this.rhythmQuantizer) {
                     const quantizedNote = this.applyQuantization(noteOnset);

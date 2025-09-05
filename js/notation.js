@@ -42,6 +42,10 @@ class NotationRenderer {
         this.playhead = null;         // Will be set by app
         this.isRecording = false;     // Recording state
         
+        // Register detection
+        this.registerDetector = null; // Will be set by app
+        this.clefChanges = [];        // Track clef changes for rendering
+        
         // Staff positioning reference points
         this.staffMiddleY = this.staffStartY + (this.staffSpacing * 2); // B4 line
         this.staffTopY = this.staffStartY;                              // F5 line  
@@ -593,5 +597,52 @@ class NotationRenderer {
     setRecordingState(recording) {
         this.isRecording = recording;
         console.log('Notation recording state:', recording);
+    }
+    
+    // Register detection methods
+    setRegisterDetector(registerDetector) {
+        this.registerDetector = registerDetector;
+    }
+    
+    changeClef(newClef) {
+        // Record clef change for rendering
+        this.clefChanges.push({
+            clef: newClef,
+            position: this.staffStartX + 90 + (this.currentMeasure * this.measureWidth) - this.scrollOffset,
+            absoluteX: this.staffStartX + 90 + (this.currentMeasure * this.measureWidth),
+            timestamp: Date.now()
+        });
+        
+        // Update current clef
+        this.clefType = newClef;
+        
+        // Update staff positioning for new clef
+        this.updateStaffPositionsForClef(newClef);
+        
+        // Redraw staff with new clef
+        this.redrawWithScroll();
+        
+        console.log('Clef changed to:', newClef);
+    }
+    
+    updateStaffPositionsForClef(clef) {
+        // Update staff reference points based on clef type
+        switch (clef) {
+            case 'treble':
+                this.staffMiddleY = this.staffStartY + (this.staffSpacing * 2); // B4
+                this.staffTopY = this.staffStartY;                              // F5
+                this.staffBottomY = this.staffStartY + (this.staffSpacing * 4); // E4
+                break;
+            case 'bass':
+                this.staffMiddleY = this.staffStartY + (this.staffSpacing * 2); // D3  
+                this.staffTopY = this.staffStartY;                              // A3
+                this.staffBottomY = this.staffStartY + (this.staffSpacing * 4); // F2
+                break;
+            case 'alto':
+                this.staffMiddleY = this.staffStartY + (this.staffSpacing * 2); // C4
+                this.staffTopY = this.staffStartY;                              // G4
+                this.staffBottomY = this.staffStartY + (this.staffSpacing * 4); // E3
+                break;
+        }
     }
 }

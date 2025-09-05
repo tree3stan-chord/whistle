@@ -7,48 +7,144 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header>
-        <h1>🎵 Whistle</h1>
-        <p>Real-time pitch-to-staff notation</p>
+    <header class="app-header">
+        <div class="header-content">
+            <div class="brand">
+                <h1>🎵 Whistle</h1>
+                <p>Real-time pitch-to-staff notation</p>
+            </div>
+            <div class="header-actions">
+                <button id="debugToggle" class="icon-btn" title="Toggle Debug View">
+                    <span>🔧</span>
+                </button>
+                <button id="fullscreenBtn" class="icon-btn" title="Fullscreen">
+                    <span>⛶</span>
+                </button>
+            </div>
+        </div>
     </header>
 
-    <main>
-        <div class="controls">
-            <button id="startBtn" type="button">Start Listening</button>
-            <button id="stopBtn" type="button" disabled>Stop</button>
-            <button id="clearBtn" type="button">Clear</button>
-            <button id="analyzeRhythmBtn" type="button">Analyze Rhythm</button>
-            <button id="quantizeToggleBtn" type="button" disabled>Enable Quantization</button>
-            <button id="exportPngBtn" type="button">Export PNG</button>
-            <button id="exportJsonBtn" type="button">Export JSON</button>
-        </div>
-        
-        <div class="controls">
-            <label>Input Mode:</label>
-            <button id="vocalModeBtn" type="button" class="mode-btn active">Vocal</button>
-            <button id="instrumentModeBtn" type="button" class="mode-btn">Whistle/Instrument</button>
+    <main class="app-main">
+        <!-- Primary controls section -->
+        <div class="primary-controls">
+            <div class="transport-controls">
+                <button id="startBtn" type="button" class="primary-btn record-btn">
+                    <span class="btn-icon">🎤</span>
+                    <span class="btn-text">Start Recording</span>
+                </button>
+                <button id="stopBtn" type="button" class="primary-btn stop-btn" disabled>
+                    <span class="btn-icon">⏹</span>
+                    <span class="btn-text">Stop</span>
+                </button>
+            </div>
+            
+            <div class="secondary-controls">
+                <button id="clearBtn" type="button" class="secondary-btn">
+                    <span class="btn-icon">🗑</span>
+                    <span class="btn-text">Clear</span>
+                </button>
+                <button id="analyzeRhythmBtn" type="button" class="secondary-btn">
+                    <span class="btn-icon">🎵</span>
+                    <span class="btn-text">Analyze Rhythm</span>
+                </button>
+                <button id="quantizeToggleBtn" type="button" class="secondary-btn" disabled>
+                    <span class="btn-icon">📏</span>
+                    <span class="btn-text">Enable Quantization</span>
+                </button>
+            </div>
         </div>
 
-        <div class="status">
-            <span id="statusText">Click "Start Listening" to begin</span>
-            <span id="pitchDisplay">--</span>
+        <!-- Mode and export controls -->
+        <div class="utility-controls">
+            <div class="input-mode-section">
+                <label class="section-label">Input Mode:</label>
+                <div class="mode-buttons">
+                    <button id="vocalModeBtn" type="button" class="mode-btn active">
+                        <span class="mode-icon">🎤</span>
+                        <span>Vocal</span>
+                    </button>
+                    <button id="instrumentModeBtn" type="button" class="mode-btn">
+                        <span class="mode-icon">🎼</span>
+                        <span>Whistle/Instrument</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="export-section">
+                <label class="section-label">Export:</label>
+                <div class="export-buttons">
+                    <button id="exportPngBtn" type="button" class="export-btn">
+                        <span class="btn-icon">🖼</span>
+                        <span class="btn-text">PNG</span>
+                    </button>
+                    <button id="exportJsonBtn" type="button" class="export-btn">
+                        <span class="btn-icon">📄</span>
+                        <span class="btn-text">JSON</span>
+                    </button>
+                </div>
+            </div>
         </div>
 
-        <div class="staff-container">
-            <canvas id="staffCanvas" width="1200" height="400"></canvas>
+        <!-- Status and pitch display -->
+        <div class="status-section">
+            <div class="status-main">
+                <span id="statusText" class="status-text">Click "Start Recording" to begin</span>
+            </div>
+            <div class="pitch-info">
+                <span id="pitchDisplay" class="pitch-display">--</span>
+                <span class="pitch-label">Current Note</span>
+            </div>
         </div>
 
-        <div class="debug">
-            <span>Frequency: <span id="freqDisplay">--</span> Hz</span>
-            <span>Note: <span id="noteDisplay">--</span></span>
-            <span>Onset: <span id="onsetDisplay">--</span></span>
-            <span>Flux: <span id="fluxDisplay">--</span></span>
+        <!-- Staff notation canvas -->
+        <div class="notation-section">
+            <div class="staff-container">
+                <canvas id="staffCanvas" width="1200" height="400"></canvas>
+            </div>
         </div>
-        
-        <div class="debug">
-            <span>Tempo: <span id="tempoDisplay">--</span> BPM</span>
-            <span>Beat Phase: <span id="beatPhaseDisplay">--</span></span>
-            <span>Intervals: <span id="intervalsDisplay">--</span></span>
+
+        <!-- Debug panel (initially hidden) -->
+        <div id="debugPanel" class="debug-panel hidden">
+            <div class="debug-header">
+                <h3>Debug Information</h3>
+            </div>
+            <div class="debug-content">
+                <div class="debug-group">
+                    <h4>Audio Analysis</h4>
+                    <div class="debug-row">
+                        <span class="debug-label">Frequency:</span>
+                        <span id="freqDisplay" class="debug-value">--</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Note:</span>
+                        <span id="noteDisplay" class="debug-value">--</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Onset:</span>
+                        <span id="onsetDisplay" class="debug-value">--</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Flux:</span>
+                        <span id="fluxDisplay" class="debug-value">--</span>
+                    </div>
+                </div>
+                
+                <div class="debug-group">
+                    <h4>Rhythm Analysis</h4>
+                    <div class="debug-row">
+                        <span class="debug-label">Tempo:</span>
+                        <span id="tempoDisplay" class="debug-value">--</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Beat Phase:</span>
+                        <span id="beatPhaseDisplay" class="debug-value">--</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Intervals:</span>
+                        <span id="intervalsDisplay" class="debug-value">--</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -64,6 +160,7 @@
     <script src="js/notation.js"></script>
     <script src="js/staff-config.js"></script>
     <script src="js/playhead.js"></script>
+    <script src="js/register-detector.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

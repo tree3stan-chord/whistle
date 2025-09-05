@@ -278,6 +278,11 @@ class StaffConfiguration {
             this.app.playhead.updateConfiguration(this.config);
         }
         
+        // Apply to register detector (manual clef override)
+        if (this.app.registerDetector && this.config.clef) {
+            this.app.registerDetector.setClef(this.config.clef);
+        }
+        
         // Save settings
         this.saveSettings();
         
