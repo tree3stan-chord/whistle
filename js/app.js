@@ -32,6 +32,7 @@ class WhistleApp {
         this.initializeRegisterDetector();
         this.initializeAudioConfig();
         this.initializeEnhancedExport();
+        this.initializeSessionManager();
     }
     
     initializeElements() {
@@ -64,6 +65,13 @@ class WhistleApp {
         this.beatPhaseDisplay = document.getElementById('beatPhaseDisplay');
         this.intervalsDisplay = document.getElementById('intervalsDisplay');
         this.canvas = document.getElementById('staffCanvas');
+        
+        // Session Management UI
+        this.saveSessionBtn = document.getElementById('saveSessionBtn');
+        this.loadSessionBtn = document.getElementById('loadSessionBtn');
+        this.authBtn = document.getElementById('authBtn');
+        this.authInfo = document.getElementById('authInfo');
+        this.connectivityStatus = document.getElementById('connectivityStatus');
     }
     
     bindEvents() {
@@ -85,6 +93,11 @@ class WhistleApp {
         // New UI event handlers
         this.debugToggle.addEventListener('click', () => this.toggleDebugPanel());
         this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+        
+        // Session Management event handlers
+        this.saveSessionBtn.addEventListener('click', () => this.showSessionModal('save'));
+        this.loadSessionBtn.addEventListener('click', () => this.showSessionModal('load'));
+        this.authBtn.addEventListener('click', () => this.showAuthModal());
     }
     
     setupCanvas() {
@@ -628,6 +641,341 @@ Try playing with more consistent timing or more notes.`);
             skipNonCriticalUpdates: this.skipNonCriticalUpdates,
             actualFrameRate: this.performanceStats.frameCount / 2
         };
+    }
+    
+    /**
+     * Session Manager Integration
+     */
+    
+    initializeSessionManager() {
+        this.sessionManager = new SessionManager(this);
+        this.bindModalEvents();
+        console.log('Session manager initialized');
+    }
+    
+    bindModalEvents() {
+        // Auth modal events
+        const authModal = document.getElementById('authModal');
+        const sessionModal = document.getElementById('sessionModal');
+        
+        // Modal close events
+        document.querySelectorAll('.modal-close').forEach(closeBtn => {
+            closeBtn.addEventListener('click', (e) => {
+                const modal = e.target.closest('.modal');
+                this.closeModal(modal);
+            });
+        });
+        
+        // Click outside modal to close
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                this.closeModal(e.target);
+            }
+        });
+        
+        // Auth tab switching
+        document.getElementById('loginTab').addEventListener('click', () => this.switchAuthTab('login'));
+        document.getElementById('registerTab').addEventListener('click', () => this.switchAuthTab('register'));
+        
+        // Session tab switching
+        document.getElementById('saveTab').addEventListener('click', () => this.switchSessionTab('save'));
+        document.getElementById('loadTab').addEventListener('click', () => this.switchSessionTab('load'));
+        
+        // Auth form submission
+        document.getElementById('authForm').addEventListener('submit', (e) => this.handleAuthSubmit(e));
+        document.getElementById('authCancelBtn').addEventListener('click', () => this.closeModal(authModal));
+        document.getElementById('logoutBtn').addEventListener('click', () => this.handleLogout());
+        
+        // Session form submission
+        document.getElementById('saveSessionForm').addEventListener('submit', (e) => this.handleSaveSession(e));
+    }
+    
+    showAuthModal() {
+        const modal = document.getElementById('authModal');
+        const logoutBtn = document.getElementById('logoutBtn');
+        
+        if (this.sessionManager.user) {
+            // User is logged in, show logout option
+            logoutBtn.style.display = 'inline-block';
+            document.getElementById('authSubmitBtn').style.display = 'none';
+        } else {
+            // Show login form
+            logoutBtn.style.display = 'none';
+            document.getElementById('authSubmitBtn').style.display = 'inline-block';
+        }
+        
+        this.showModal(modal);
+    }
+    
+    showSessionModal(tab = 'save') {
+        const modal = document.getElementById('sessionModal');
+        this.showModal(modal);
+        this.switchSessionTab(tab);
+        
+        if (tab === 'load') {
+            this.loadSessionList();
+        }
+    }
+    
+    showModal(modal) {
+        modal.style.display = 'block';
+        modal.setAttribute('aria-hidden', 'false');
+        // Focus first input
+        const firstInput = modal.querySelector('input');
+        if (firstInput) firstInput.focus();
+    }
+    
+    closeModal(modal) {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    
+    switchAuthTab(tab) {
+        const loginTab = document.getElementById('loginTab');
+        const registerTab = document.getElementById('registerTab');
+        const usernameGroup = document.getElementById('usernameGroup');
+        const submitBtn = document.getElementById('authSubmitBtn');
+        
+        if (tab === 'login') {
+            loginTab.classList.add('active');
+            registerTab.classList.remove('active');
+            usernameGroup.style.display = 'none';
+            submitBtn.textContent = 'Login';
+        } else {
+            registerTab.classList.add('active');
+            loginTab.classList.remove('active');
+            usernameGroup.style.display = 'block';
+            submitBtn.textContent = 'Register';
+        }
+    }
+    
+    switchSessionTab(tab) {
+        const saveTab = document.getElementById('saveTab');
+        const loadTab = document.getElementById('loadTab');
+        const saveTabContent = document.getElementById('saveSessionTab');
+        const loadTabContent = document.getElementById('loadSessionTab');
+        
+        if (tab === 'save') {
+            saveTab.classList.add('active');
+            loadTab.classList.remove('active');
+            saveTabContent.style.display = 'block';
+            loadTabContent.style.display = 'none';
+        } else {
+            loadTab.classList.add('active');
+            saveTab.classList.remove('active');
+            loadTabContent.style.display = 'block';
+            saveTabContent.style.display = 'none';
+        }
+    }
+    
+    async handleAuthSubmit(e) {
+        e.preventDefault();
+        
+        const email = document.getElementById('authEmail').value;
+        const password = document.getElementById('authPassword').value;
+        const username = document.getElementById('authUsername').value;
+        const isRegister = document.getElementById('registerTab').classList.contains('active');
+        
+        try {
+            let result;
+            if (isRegister) {
+                result = await this.sessionManager.registerUser(email, password, username);
+            } else {
+                result = await this.sessionManager.loginUser(email, password);
+            }
+            
+            if (result.success) {
+                this.closeModal(document.getElementById('authModal'));
+                this.showNotification(`${isRegister ? 'Registration' : 'Login'} successful!`, 'success');
+            } else {
+                this.showNotification(result.error, 'error');
+            }
+        } catch (error) {
+            console.error('Auth error:', error);
+            this.showNotification('Authentication failed', 'error');
+        }
+    }
+    
+    async handleLogout() {
+        try {
+            await this.sessionManager.logout();
+            this.closeModal(document.getElementById('authModal'));
+            this.showNotification('Logged out successfully', 'success');
+        } catch (error) {
+            console.error('Logout error:', error);
+            this.showNotification('Logout failed', 'error');
+        }
+    }
+    
+    async handleSaveSession(e) {
+        e.preventDefault();
+        
+        const name = document.getElementById('sessionName').value;
+        const description = document.getElementById('sessionDescription').value;
+        
+        try {
+            const result = await this.sessionManager.saveSession(
+                this.sessionManager.getCurrentSessionData(),
+                name,
+                description
+            );
+            
+            if (result.success) {
+                this.closeModal(document.getElementById('sessionModal'));
+                const message = result.offline ? 'Session saved offline' : 'Session saved successfully';
+                this.showNotification(message, 'success');
+            } else {
+                this.showNotification(result.error || 'Failed to save session', 'error');
+            }
+        } catch (error) {
+            console.error('Save session error:', error);
+            this.showNotification('Failed to save session', 'error');
+        }
+    }
+    
+    async loadSessionList() {
+        const container = document.getElementById('sessionListContainer');
+        container.innerHTML = '<div class="loading">Loading sessions...</div>';
+        
+        try {
+            const result = await this.sessionManager.listSessions();
+            
+            if (result.success) {
+                this.renderSessionList(result.sessions, result.offline);
+            } else {
+                container.innerHTML = `<div class="error">Failed to load sessions: ${result.error}</div>`;
+            }
+        } catch (error) {
+            console.error('Load sessions error:', error);
+            container.innerHTML = '<div class="error">Failed to load sessions</div>';
+        }
+    }
+    
+    renderSessionList(sessions, offline = false) {
+        const container = document.getElementById('sessionListContainer');
+        
+        if (sessions.length === 0) {
+            container.innerHTML = '<div class="empty">No sessions found</div>';
+            return;
+        }
+        
+        const html = sessions.map(session => `
+            <div class="session-item" data-session-id="${session.sessionId}">
+                <div class="session-info">
+                    <h4>${session.name}</h4>
+                    <p class="session-meta">
+                        Created: ${new Date(session.createdAt).toLocaleDateString()}
+                        ${offline ? ' (Offline)' : ''}
+                    </p>
+                </div>
+                <div class="session-actions">
+                    <button class="load-session-btn primary-btn" data-session-id="${session.sessionId}">
+                        Load
+                    </button>
+                    <button class="delete-session-btn secondary-btn" data-session-id="${session.sessionId}">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        `).join('');
+        
+        container.innerHTML = html;
+        
+        // Bind load and delete events
+        container.querySelectorAll('.load-session-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.handleLoadSession(e.target.dataset.sessionId));
+        });
+        
+        container.querySelectorAll('.delete-session-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.handleDeleteSession(e.target.dataset.sessionId));
+        });
+    }
+    
+    async handleLoadSession(sessionId) {
+        try {
+            const result = await this.sessionManager.loadSession(sessionId);
+            
+            if (result.success) {
+                // Apply loaded session data
+                this.applySessionData(result.data);
+                this.closeModal(document.getElementById('sessionModal'));
+                const message = result.offline ? 'Session loaded from offline storage' : 'Session loaded successfully';
+                this.showNotification(message, 'success');
+            } else {
+                this.showNotification(result.error || 'Failed to load session', 'error');
+            }
+        } catch (error) {
+            console.error('Load session error:', error);
+            this.showNotification('Failed to load session', 'error');
+        }
+    }
+    
+    async handleDeleteSession(sessionId) {
+        if (!confirm('Are you sure you want to delete this session?')) {
+            return;
+        }
+        
+        try {
+            const result = await this.sessionManager.deleteSession(sessionId);
+            
+            if (result.success) {
+                this.showNotification('Session deleted successfully', 'success');
+                this.loadSessionList(); // Refresh the list
+            } else {
+                this.showNotification(result.error || 'Failed to delete session', 'error');
+            }
+        } catch (error) {
+            console.error('Delete session error:', error);
+            this.showNotification('Failed to delete session', 'error');
+        }
+    }
+    
+    applySessionData(sessionData) {
+        // Clear current notation
+        this.clearNotation();
+        
+        // Apply configuration if available
+        if (sessionData.configuration) {
+            if (sessionData.configuration.staff && this.staffConfig) {
+                this.staffConfig.updateConfiguration(sessionData.configuration.staff);
+            }
+            if (sessionData.configuration.audio && this.audioConfig) {
+                this.audioConfig.updateConfiguration(sessionData.configuration.audio);
+            }
+        }
+        
+        // Apply notation data
+        if (sessionData.notation && sessionData.notation.notes) {
+            // Add notes to notation renderer
+            sessionData.notation.notes.forEach(note => {
+                this.notationRenderer.addNote(note);
+            });
+            
+            console.log(`Loaded session with ${sessionData.notation.notes.length} notes`);
+        }
+    }
+    
+    showNotification(message, type = 'info') {
+        const container = document.getElementById('notifications');
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        
+        container.appendChild(notification);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 5000);
+        
+        // Click to dismiss
+        notification.addEventListener('click', () => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        });
     }
 }
 

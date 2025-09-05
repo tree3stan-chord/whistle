@@ -14,6 +14,26 @@
                 <p>Real-time pitch-to-staff notation</p>
             </div>
             <div class="header-actions">
+                <!-- Session Management -->
+                <div class="session-controls">
+                    <button id="saveSessionBtn" class="icon-btn" title="Save Session">
+                        <span>💾</span>
+                    </button>
+                    <button id="loadSessionBtn" class="icon-btn" title="Load Session">
+                        <span>📂</span>
+                    </button>
+                    <div id="connectivityStatus" class="connectivity-status online">●</div>
+                </div>
+                
+                <!-- Auth Status -->
+                <div class="auth-controls">
+                    <span id="authInfo" class="auth-info">Guest session</span>
+                    <button id="authBtn" class="icon-btn" title="Login / Register">
+                        <span>👤</span>
+                    </button>
+                </div>
+                
+                <!-- Debug and Fullscreen -->
                 <button id="debugToggle" class="icon-btn" title="Toggle Debug View">
                     <span>🔧</span>
                 </button>
@@ -168,6 +188,93 @@
         </div>
     </main>
 
+    <!-- Authentication Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="authModalTitle">Login / Register</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="auth-tabs">
+                    <button id="loginTab" class="tab-btn active">Login</button>
+                    <button id="registerTab" class="tab-btn">Register</button>
+                </div>
+                
+                <form id="authForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="authEmail">Email:</label>
+                        <input type="email" id="authEmail" required>
+                    </div>
+                    
+                    <div id="usernameGroup" class="form-group" style="display: none;">
+                        <label for="authUsername">Username (optional):</label>
+                        <input type="text" id="authUsername">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="authPassword">Password:</label>
+                        <input type="password" id="authPassword" required>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" id="authSubmitBtn" class="primary-btn">Login</button>
+                        <button type="button" id="authCancelBtn" class="secondary-btn">Cancel</button>
+                        <button type="button" id="logoutBtn" class="secondary-btn" style="display: none;">Logout</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Management Modal -->
+    <div id="sessionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="sessionModalTitle">Session Management</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="session-tabs">
+                    <button id="saveTab" class="tab-btn active">Save Session</button>
+                    <button id="loadTab" class="tab-btn">Load Session</button>
+                </div>
+                
+                <!-- Save Session Tab -->
+                <div id="saveSessionTab" class="tab-content">
+                    <form id="saveSessionForm" class="session-form">
+                        <div class="form-group">
+                            <label for="sessionName">Session Name:</label>
+                            <input type="text" id="sessionName" placeholder="My Melody Session">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="sessionDescription">Description (optional):</label>
+                            <textarea id="sessionDescription" placeholder="Description of this session..."></textarea>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="primary-btn">Save Session</button>
+                            <button type="button" class="secondary-btn modal-close">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Load Session Tab -->
+                <div id="loadSessionTab" class="tab-content" style="display: none;">
+                    <div class="session-list">
+                        <div id="sessionListContainer">
+                            <div class="loading">Loading sessions...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notifications" class="notifications"></div>
+
     <script src="js/audio.js"></script>
     <script src="js/audio-config.js"></script>
     <script src="js/yin.js"></script>
@@ -185,6 +292,7 @@
     <script src="js/staff-config.js"></script>
     <script src="js/playhead.js"></script>
     <script src="js/register-detector.js"></script>
+    <script src="js/session-manager.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
