@@ -21,6 +21,12 @@ class PitchDetector {
         // Initialize intelligent articulation detection
         this.articulationDetector = new ArticulationDetector(this.sampleRate);
         
+        // Initialize enharmonic spelling detector
+        this.enharmonicDetector = new EnharmonicDetector('C'); // Default key
+        
+        // Initialize key detector for automatic key signature detection
+        this.keyDetector = new KeyDetector();
+        
         // Frequency domain analysis (for backup/debugging)
         this.bufferLength = this.analyser.frequencyBinCount;
         this.frequencyData = new Float32Array(this.bufferLength);
@@ -147,37 +153,80 @@ class PitchDetector {
     frequencyToNote(frequency) {
         if (frequency <= 0) return { note: '--', octave: 0, cents: 0 };
         
-        let closestNote = 'A4';
-        let minDifference = Infinity;
+        // Use enhanced enharmonic detector for better note spelling
+        const previousNote = this.currentNote;
+        const analysis = this.enharmonicDetector.analyzeFrequency(frequency, { previousNote });
         
-        // Find closest note
-        for (const [note, freq] of Object.entries(this.noteFreqs)) {
-            const difference = Math.abs(frequency - freq);
-            if (difference < minDifference) {
-                minDifference = difference;
-                closestNote = note;
-            }
-        }
-        
-        // Calculate cents deviation
-        const targetFreq = this.noteFreqs[closestNote];
-        const cents = Math.round(1200 * Math.log2(frequency / targetFreq));
-        
-        // Extract octave properly (handles C#4, Bb3, etc.)
-        const octaveMatch = closestNote.match(/(\d+)$/);
-        const octave = octaveMatch ? parseInt(octaveMatch[1]) : 4;
-        
+        // Return in the format expected by the rest of the system
         return {
-            note: closestNote,
-            octave: octave,
-            cents: cents,
+            note: analysis.note + analysis.octave,
+            octave: analysis.octave,
+            cents: analysis.cents,
             frequency: frequency,
-            targetFreq: targetFreq
+            targetFreq: analysis.targetFreq,
+            confidence: analysis.confidence,
+            harmonicInfo: analysis.harmonicInfo,
+            enharmonicAlternatives: analysis.enharmonicAlternatives
         };
     }
     
     setSampleRate(sampleRate) {
         this.sampleRate = sampleRate;
+    }
+    
+    setKeySignature(keySignature) {
+        if (this.enharmonicDetector) {
+            this.enharmonicDetector.setKeySignature(keySignature);
+        }
+        if (this.keyDetector) {
+            this.keyDetector.setKey(keySignature);
+        }
+    }
+    
+    // Enable/disable automatic key detection
+    setAutoKeyDetection(enabled) {
+        if (this.keyDetector) {
+            this.keyDetector.setAutoDetection(enabled);
+        }
+    }
+    
+    // Get current key analysis
+    getKeyAnalysis() {
+        if (this.keyDetector) {
+            return this.keyDetector.getKeySuggestions();
+        }
+        return { currentKey: 'C', suggestions: [], confidence: 0 };
+    }
+    
+    // Enhanced pitch detection that considers harmonic content
+    detectPitchWithHarmonics() {
+        const pitchResult = this.detectPitch();
+        if (!pitchResult || pitchResult.confidence < this.confidenceThreshold) {
+            return null;
+        }
+        
+        const noteInfo = this.frequencyToNote(pitchResult.frequency);
+        
+        // Additional validation using harmonic analysis
+        if (noteInfo.harmonicInfo && noteInfo.harmonicInfo.isLikelyHarmonic) {
+            // If this seems to be a harmonic, we might want to consider the fundamental
+            const fundamentalCandidates = noteInfo.harmonicInfo.harmonicCandidates;
+            
+            // For now, we'll use the detected pitch but provide harmonic context
+            noteInfo.harmonicContext = {
+                isHarmonic: true,
+                possibleFundamentals: fundamentalCandidates.map(candidate => ({
+                    note: candidate.fundamentalNote,
+                    harmonic: candidate.harmonic,
+                    confidence: candidate.accuracy / this.harmonicTolerance
+                }))
+            };
+        }
+        
+        return {
+            ...pitchResult,
+            noteInfo: noteInfo
+        };
     }
     
     detectNoteOnset() {
@@ -254,6 +303,21 @@ class PitchDetector {
         
         if (!this.recordingMode) {
             tempoInfo = this.tempoTracker.addOnset(currentTime, noteInfo);
+        }
+        
+        // Add note to key detector for automatic key analysis
+        if (this.keyDetector && noteInfo.confidence > 0.7) {
+            this.keyDetector.addNote(noteInfo);
+            
+            // Check if key has changed automatically
+            const keyAnalysis = this.keyDetector.analyzeKey();
+            if (keyAnalysis.changed) {
+                // Update enharmonic detector with new key
+                this.enharmonicDetector.setKeySignature(keyAnalysis.key);
+                
+                // Notify about key change
+                console.log(`Automatic key detection: ${keyAnalysis.key} (${(keyAnalysis.confidence * 100).toFixed(0)}% confident)`);
+            }
         }
         
         return {

@@ -11,7 +11,8 @@ class StaffConfiguration {
             clef: 'treble',
             metronome: false,
             showBeatGrid: true,
-            quantizationLevel: 16 // 16th notes
+            quantizationLevel: 16, // 16th notes
+            autoKeyDetection: true // Enable automatic key detection
         };
         
         // Key signature data with sharps/flats
@@ -94,6 +95,14 @@ class StaffConfiguration {
                             </option>`
                         ).join('')}
                     </select>
+                    <div class="key-options">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="autoKeyDetectionCheck" ${this.config.autoKeyDetection ? 'checked' : ''}>
+                            <span class="checkmark"></span>
+                            Auto-detect key signature
+                        </label>
+                        <button id="analyzeKeyBtn" class="config-btn-small" style="margin-top: 0.5rem;">📊 Analyze Current Key</button>
+                    </div>
                 </div>
                 
                 <div class="config-section">
@@ -205,6 +214,17 @@ class StaffConfiguration {
             this.config.showBeatGrid = e.target.checked;
         });
         
+        // Auto key detection
+        document.getElementById('autoKeyDetectionCheck').addEventListener('change', (e) => {
+            this.config.autoKeyDetection = e.target.checked;
+            this.applyKeyDetectionSetting();
+        });
+        
+        // Analyze key button
+        document.getElementById('analyzeKeyBtn').addEventListener('click', () => {
+            this.analyzeCurrentKey();
+        });
+        
         // Action buttons
         document.getElementById('resetConfigBtn').addEventListener('click', () => {
             this.resetToDefaults();
@@ -244,7 +264,8 @@ class StaffConfiguration {
             clef: 'treble',
             metronome: false,
             showBeatGrid: true,
-            quantizationLevel: 16
+            quantizationLevel: 16,
+            autoKeyDetection: true
         };
         
         // Update UI to reflect defaults
@@ -261,6 +282,7 @@ class StaffConfiguration {
         document.getElementById('quantizationSelect').value = this.config.quantizationLevel;
         document.getElementById('metronomeCheck').checked = this.config.metronome;
         document.getElementById('beatGridCheck').checked = this.config.showBeatGrid;
+        document.getElementById('autoKeyDetectionCheck').checked = this.config.autoKeyDetection;
     }
     
     applyConfiguration() {
@@ -282,6 +304,14 @@ class StaffConfiguration {
         if (this.app.registerDetector && this.config.clef) {
             this.app.registerDetector.setClef(this.config.clef);
         }
+        
+        // Apply to pitch detector (key signature for enharmonic spelling)
+        if (this.app.pitchDetector && this.config.keySignature) {
+            this.app.pitchDetector.setKeySignature(this.config.keySignature);
+        }
+        
+        // Apply auto key detection setting
+        this.applyKeyDetectionSetting();
         
         // Save settings
         this.saveSettings();
@@ -345,5 +375,69 @@ class StaffConfiguration {
     
     getTimeSignatureInfo() {
         return this.config.timeSignature;
+    }
+    
+    applyKeyDetectionSetting() {
+        if (this.app.pitchDetector) {
+            this.app.pitchDetector.setAutoKeyDetection(this.config.autoKeyDetection);
+        }
+    }
+    
+    analyzeCurrentKey() {
+        if (!this.app.pitchDetector) {
+            this.showKeyAnalysisResult('No pitch detector available', '#f44336');
+            return;
+        }
+        
+        const keyAnalysis = this.app.pitchDetector.getKeyAnalysis();
+        
+        if (keyAnalysis.confidence === 'insufficient_data' || keyAnalysis.suggestions.length === 0) {
+            this.showKeyAnalysisResult('Not enough data for key analysis. Try playing some notes first.', '#FF9800');
+            return;
+        }
+        
+        const topSuggestion = keyAnalysis.suggestions[0];
+        const confidence = Math.round(topSuggestion.confidence * 100);
+        
+        if (confidence < 50) {
+            this.showKeyAnalysisResult(`Uncertain key analysis. Best guess: ${topSuggestion.key} (${confidence}% confident)`, '#FF9800');
+            return;
+        }
+        
+        // Show analysis result
+        let message = `Detected key: ${topSuggestion.key} (${confidence}% confident)`;
+        
+        if (keyAnalysis.suggestions.length > 1) {
+            const alternatives = keyAnalysis.suggestions.slice(1, 3)
+                .map(s => `${s.key} (${Math.round(s.confidence * 100)}%)`)
+                .join(', ');
+            message += `\\nAlternatives: ${alternatives}`;
+        }
+        
+        // Ask user if they want to apply the detected key
+        if (confirm(`${message}\\n\\nApply this key signature?`)) {
+            this.config.keySignature = topSuggestion.key;
+            this.updateUIFromConfig();
+            this.applyConfiguration();
+            this.showKeyAnalysisResult(`Key signature changed to ${topSuggestion.key}`, '#4CAF50');
+        } else {
+            this.showKeyAnalysisResult(message, '#4a9eff');
+        }
+    }
+    
+    showKeyAnalysisResult(message, color) {
+        const statusText = document.getElementById('statusText');
+        if (statusText) {
+            const originalText = statusText.textContent;
+            const originalColor = statusText.style.color;
+            
+            statusText.textContent = message;
+            statusText.style.color = color;
+            
+            setTimeout(() => {
+                statusText.textContent = originalText;
+                statusText.style.color = originalColor;
+            }, 5000);
+        }
     }
 }
