@@ -20,10 +20,15 @@ if [ ! -f package-lock.json ] || ! npm ci --dry-run --silent 2>/dev/null; then
 fi
 npm ci --omit=dev >/dev/null 2>&1
 
-# Build frontend
+# Build frontend (Svelte)
+echo "📦 Building Svelte frontend..."
+cd "$PROJECT_DIR"
+npm ci
+npm run build
+
 cd "$OUT"
 mkdir -p public data logs backend/data backend/logs
-cp -r js index.html styles.css css public/ 2>/dev/null
+cp -r "$PROJECT_DIR/.svelte-kit/output/client/"* public/ 2>/dev/null
 
 # Deploy to production
 rsync -az --delete "$OUT"/ /var/www/whistle.musicsian.com/releases/$STAMP/ 2>/dev/null
