@@ -3,9 +3,12 @@
   import { AudioService } from '../lib/audio/AudioService.js';
   import { audioState, pitchResult, speechTranscript, isSpeechListening, audioStateActions } from '../lib/stores/audioStore.js';
   import StaffNotation from '../lib/components/StaffNotation.svelte';
+  import SessionManager from '../lib/components/SessionManager.svelte';
+  import type { TranscriptionData } from '../lib/export/ExportService.js';
   
   let audioService: AudioService | null = null;
   let mounted = false;
+  let staffComponent: StaffNotation;
 
   // Reactive variables from stores
   $: isRecording = $audioState.isRecording;
@@ -61,6 +64,19 @@
 
   function formatConfidence(conf: number): string {
     return `${(conf * 100).toFixed(0)}%`;
+  }
+
+  function handleLoadSession(data: TranscriptionData) {
+    // Clear current transcript and set new lyrics
+    audioStateActions.setSpeechTranscript(data.lyrics);
+    
+    // Load notes into staff notation
+    if (staffComponent) {
+      // Clear current notes first
+      staffComponent.notes.length = 0;
+      // Add loaded notes
+      staffComponent.notes.push(...data.notes);
+    }
   }
 </script>
 
@@ -158,7 +174,16 @@
   <section class="staff-section">
     <h3>Staff Notation</h3>
     <p>Notes will appear here as you sing</p>
-    <StaffNotation width={800} height={200} />
+    <StaffNotation bind:this={staffComponent} width={800} height={200} />
+  </section>
+
+  <section class="session-section">
+    <h3>Session Management</h3>
+    <SessionManager 
+      notes={staffComponent?.notes || []}
+      lyrics={currentTranscript}
+      onLoadSession={handleLoadSession}
+    />
   </section>
 
   <section class="lyrics-section">
@@ -466,5 +491,19 @@
   .clear-lyrics-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  
+  .session-section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .session-section h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #495057;
   }
 </style>

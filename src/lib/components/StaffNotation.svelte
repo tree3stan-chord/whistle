@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { pitchResult } from '../stores/audioStore.js';
   import { NoteConverter, type MusicalNote } from '../audio/NoteConverter.js';
+  import { ExportService } from '../export/ExportService.js';
   
   export let width = 800;
   export let height = 200;
@@ -167,6 +168,30 @@
   function clearNotes() {
     notes = [];
   }
+  
+  // Export functions
+  async function exportToPNG() {
+    if (!canvas) {
+      throw new Error('Canvas not available for export');
+    }
+    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    await ExportService.exportCanvasToPNG(canvas, {
+      filename: `whistle-staff-${timestamp}`
+    });
+  }
+  
+  async function exportToMIDI() {
+    if (notes.length === 0) {
+      throw new Error('No notes to export');
+    }
+    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    await ExportService.exportToMIDI(notes, `whistle-melody-${timestamp}`);
+  }
+  
+  // Expose notes and export functions to parent component
+  export { notes, exportToPNG, exportToMIDI };
 </script>
 
 <div class="staff-container">
@@ -179,6 +204,12 @@
   <div class="controls">
     <button on:click={clearNotes} class="clear-btn">
       Clear Staff
+    </button>
+    <button on:click={exportToPNG} class="export-btn" disabled={notes.length === 0}>
+      Export PNG
+    </button>
+    <button on:click={exportToMIDI} class="export-btn" disabled={notes.length === 0}>
+      Export MIDI
     </button>
     <div class="note-info">
       Notes: {notes.length}
@@ -219,6 +250,25 @@
   
   .clear-btn:hover {
     background: #c82333;
+  }
+  
+  .export-btn {
+    padding: 8px 16px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  
+  .export-btn:hover:not(:disabled) {
+    background: #0056b3;
+  }
+  
+  .export-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
   }
   
   .note-info {
