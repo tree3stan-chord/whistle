@@ -3,6 +3,7 @@
  * Solves the AudioContext conflicts that plagued the vanilla JS version
  */
 import { YinPitchDetector } from './YinPitchDetector.js';
+import { SpeechService } from './SpeechService.js';
 import { audioStateActions } from '../stores/audioStore.js';
 import type { AudioConfig, PitchDetectionResult } from './types.js';
 
@@ -13,6 +14,7 @@ export class AudioService {
   private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
   private pitchDetector: YinPitchDetector | null = null;
+  private speechService: SpeechService | null = null;
   
   private animationFrameId: number | null = null;
   private isAnalyzing = false;
@@ -29,6 +31,38 @@ export class AudioService {
     if (config) {
       this.config = { ...this.config, ...config };
     }
+    
+    // Initialize speech service
+    this.speechService = new SpeechService();
+    this.setupSpeechCallbacks();
+  }
+
+  /**
+   * Setup speech recognition callbacks
+   */
+  private setupSpeechCallbacks(): void {
+    if (!this.speechService) return;
+
+    this.speechService.onResult = (result) => {
+      audioStateActions.setSpeechResult(result);
+      if (result.isFinal) {
+        // Update transcript with final results
+        audioStateActions.setSpeechTranscript(result.text);
+      }
+    };
+
+    this.speechService.onStart = () => {
+      audioStateActions.setSpeechListening(true);
+    };
+
+    this.speechService.onEnd = () => {
+      audioStateActions.setSpeechListening(false);
+    };
+
+    this.speechService.onError = (error) => {
+      console.error('Speech recognition error:', error);
+      audioStateActions.setSpeechListening(false);
+    };
   }
 
   /**
@@ -130,6 +164,12 @@ export class AudioService {
     this.isAnalyzing = true;
     this.startAnalysisLoop();
     
+    // Start speech recognition if available
+    if (this.speechService && this.speechService.isAvailable()) {
+      this.speechService.start();
+      console.log('Speech recognition started');
+    }
+    
     console.log('Recording started');
   }
 
@@ -143,6 +183,11 @@ export class AudioService {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
+    }
+    
+    // Stop speech recognition
+    if (this.speechService) {
+      this.speechService.stop();
     }
     
     console.log('Recording stopped');

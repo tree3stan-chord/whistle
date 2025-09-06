@@ -3,6 +3,7 @@
  */
 import { writable, derived, type Readable } from 'svelte/store';
 import type { AudioState, PitchDetectionResult, AudioConfig } from '../audio/types.js';
+import type { SpeechResult } from '../audio/SpeechService.js';
 
 // Core audio state
 export const audioState = writable<AudioState>({
@@ -25,6 +26,11 @@ export const audioConfig = writable<AudioConfig>({
 
 // Current pitch detection result
 export const pitchResult = writable<PitchDetectionResult | null>(null);
+
+// Speech recognition state
+export const speechResult = writable<SpeechResult | null>(null);
+export const speechTranscript = writable<string>('');
+export const isSpeechListening = writable<boolean>(false);
 
 // Derived stores for convenience
 export const isRecording: Readable<boolean> = derived(
@@ -74,6 +80,18 @@ export const audioStateActions = {
     }));
   },
   
+  setSpeechResult(result: SpeechResult | null) {
+    speechResult.set(result);
+  },
+  
+  setSpeechTranscript(transcript: string) {
+    speechTranscript.set(transcript);
+  },
+  
+  setSpeechListening(listening: boolean) {
+    isSpeechListening.set(listening);
+  },
+  
   reset() {
     audioState.set({
       isRecording: false,
@@ -84,5 +102,8 @@ export const audioStateActions = {
       deviceLabel: null
     });
     pitchResult.set(null);
+    speechResult.set(null);
+    speechTranscript.set('');
+    isSpeechListening.set(false);
   }
 };

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { AudioService } from '../lib/audio/AudioService.js';
-  import { audioState, pitchResult, audioStateActions } from '../lib/stores/audioStore.js';
+  import { audioState, pitchResult, speechTranscript, isSpeechListening, audioStateActions } from '../lib/stores/audioStore.js';
   import StaffNotation from '../lib/components/StaffNotation.svelte';
   
   let audioService: AudioService | null = null;
@@ -13,6 +13,8 @@
   $: error = $audioState.error;
   $: deviceLabel = $audioState.deviceLabel;
   $: currentPitch = $pitchResult;
+  $: currentTranscript = $speechTranscript;
+  $: speechListening = $isSpeechListening;
 
   onMount(() => {
     mounted = true;
@@ -68,8 +70,8 @@
 
 <main class="container">
   <header>
-    <h1>🎵 Whistle - Phase 1 Audio Test</h1>
-    <p>Testing core audio functionality with clean architecture</p>
+    <h1>🎵 Whistle - Vocal Transcription</h1>
+    <p>Sing melodies with lyrics and see them transcribed to musical notation</p>
   </header>
 
   <section class="controls">
@@ -157,6 +159,35 @@
     <h3>Staff Notation</h3>
     <p>Notes will appear here as you sing</p>
     <StaffNotation width={800} height={200} />
+  </section>
+
+  <section class="lyrics-section">
+    <h3>🎤 Lyrics</h3>
+    <div class="lyrics-status">
+      {#if speechListening}
+        <span class="listening-indicator">🔴 Listening for lyrics...</span>
+      {:else}
+        <span class="not-listening">Speech recognition inactive</span>
+      {/if}
+    </div>
+    
+    <div class="lyrics-display">
+      {#if currentTranscript.trim()}
+        <p class="transcript">{currentTranscript}</p>
+      {:else}
+        <p class="no-lyrics">Start singing with words to see lyrics here</p>
+      {/if}
+    </div>
+    
+    <div class="lyrics-controls">
+      <button 
+        on:click={() => audioStateActions.setSpeechTranscript('')}
+        class="clear-lyrics-btn"
+        disabled={!currentTranscript.trim()}
+      >
+        Clear Lyrics
+      </button>
+    </div>
   </section>
 
   <section class="debug">
@@ -360,5 +391,80 @@
     color: #6c757d;
     margin-bottom: 1.5rem;
     font-style: italic;
+  }
+
+  .lyrics-section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .lyrics-section h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #495057;
+  }
+
+  .lyrics-status {
+    margin-bottom: 1rem;
+  }
+
+  .listening-indicator {
+    color: #dc3545;
+    font-weight: 500;
+    animation: pulse 1s infinite;
+  }
+
+  .not-listening {
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  .lyrics-display {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 2rem;
+    margin: 1rem 0;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .transcript {
+    font-size: 18px;
+    line-height: 1.4;
+    color: #495057;
+    margin: 0;
+    text-align: left;
+    font-family: Georgia, serif;
+  }
+
+  .no-lyrics {
+    color: #6c757d;
+    font-style: italic;
+    margin: 0;
+  }
+
+  .clear-lyrics-btn {
+    padding: 8px 16px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .clear-lyrics-btn:hover:not(:disabled) {
+    background: #545b62;
+  }
+
+  .clear-lyrics-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>
