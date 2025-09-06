@@ -10,6 +10,10 @@ export interface MusicalNote {
   pitchClass: string;    // e.g., "C", "F#"
   staffPosition: number; // Position on treble clef staff (0 = middle line)
   confidence: number;
+  timestamp?: number;    // When the note was detected/started
+  duration?: number;     // Duration in milliseconds
+  noteValue?: string;    // Duration type: 'whole', 'half', 'quarter', 'eighth', 'sixteenth'
+  tied?: 'start' | 'continue' | 'end';  // Tie information for sustained notes
 }
 
 export class NoteConverter {

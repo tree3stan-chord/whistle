@@ -19,6 +19,7 @@ const pitchResult = writable(null);
 const speechResult = writable(null);
 const speechTranscript = writable("");
 const isSpeechListening = writable(false);
+const notes = writable([]);
 derived(
   audioState,
   ($audioState) => $audioState.isRecording
@@ -65,6 +66,19 @@ const audioStateActions = {
   setSpeechListening(listening) {
     isSpeechListening.set(listening);
   },
+  // Notes management actions
+  addNote(note) {
+    notes.update((currentNotes) => [...currentNotes, note]);
+  },
+  removeNote(index) {
+    notes.update((currentNotes) => currentNotes.filter((_, i) => i !== index));
+  },
+  clearNotes() {
+    notes.set([]);
+  },
+  setNotes(newNotes) {
+    notes.set(newNotes);
+  },
   reset() {
     audioState.set({
       isRecording: false,
@@ -78,324 +92,64 @@ const audioStateActions = {
     speechResult.set(null);
     speechTranscript.set("");
     isSpeechListening.set(false);
+    notes.set([]);
   }
 };
-class NoteConverter {
-  // A4 = 440Hz = MIDI 69
-  static A4_FREQUENCY = 440;
-  static A4_MIDI = 69;
-  static NOTE_NAMES = [
-    "C",
-    "C#",
-    "D",
-    "D#",
-    "E",
-    "F",
-    "F#",
-    "G",
-    "G#",
-    "A",
-    "A#",
-    "B"
-  ];
-  /**
-   * Convert frequency to musical note information
-   */
-  static frequencyToNote(frequency, confidence = 1) {
-    const midiNumber = Math.round(12 * Math.log2(frequency / this.A4_FREQUENCY) + this.A4_MIDI);
-    const octave = Math.floor(midiNumber / 12) - 1;
-    const pitchClass = this.NOTE_NAMES[midiNumber % 12];
-    const noteName = `${pitchClass}${octave}`;
-    const staffPosition = this.midiToStaffPosition(midiNumber);
-    return {
-      frequency,
-      noteName,
-      midiNumber,
-      octave,
-      pitchClass,
-      staffPosition,
-      confidence
-    };
-  }
-  /**
-   * Convert MIDI number to staff position for treble clef
-   * 0 = middle line (B4), positive = above, negative = below
-   */
-  static midiToStaffPosition(midiNumber) {
-    const b4Midi = 71;
-    const semitonesFromB4 = midiNumber - b4Midi;
-    return Math.round(semitonesFromB4 * 0.5);
-  }
-  /**
-   * Get note name from MIDI number
-   */
-  static midiToNoteName(midiNumber) {
-    const octave = Math.floor(midiNumber / 12) - 1;
-    const pitchClass = this.NOTE_NAMES[midiNumber % 12];
-    return `${pitchClass}${octave}`;
-  }
-  /**
-   * Check if frequency is in a reasonable vocal range
-   */
-  static isVocalRange(frequency) {
-    return frequency >= 80 && frequency <= 1200;
-  }
-  /**
-   * Quantize frequency to nearest semitone
-   */
-  static quantizeToSemitone(frequency) {
-    const midiNumber = Math.round(12 * Math.log2(frequency / this.A4_FREQUENCY) + this.A4_MIDI);
-    return this.A4_FREQUENCY * Math.pow(2, (midiNumber - this.A4_MIDI) / 12);
-  }
-}
-class ExportService {
-  /**
-   * Export canvas as PNG image
-   */
-  static async exportCanvasToPNG(canvas, options = {}) {
-    const { filename = "whistle-transcription", quality = 1, format = "png" } = options;
-    try {
-      const blob = await new Promise((resolve, reject) => {
-        canvas.toBlob((blob2) => {
-          if (blob2) {
-            resolve(blob2);
-          } else {
-            reject(new Error("Failed to create image blob"));
-          }
-        }, `image/${format}`, quality);
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${filename}.${format}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      console.log(`Exported staff notation as ${filename}.${format}`);
-    } catch (error) {
-      console.error("PNG export failed:", error);
-      throw new Error("Failed to export staff notation as image");
-    }
-  }
-  /**
-   * Export transcription data as JSON
-   */
-  static async exportToJSON(data, filename = "whistle-transcription") {
-    try {
-      const jsonData = JSON.stringify(data, null, 2);
-      const blob = new Blob([jsonData], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${filename}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      console.log(`Exported transcription data as ${filename}.json`);
-    } catch (error) {
-      console.error("JSON export failed:", error);
-      throw new Error("Failed to export transcription data");
-    }
-  }
-  /**
-   * Export as MIDI file (simplified implementation)
-   */
-  static async exportToMIDI(notes, filename = "whistle-transcription") {
-    try {
-      const midi = this.createMIDIData(notes);
-      const blob = new Blob([midi], { type: "audio/midi" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${filename}.mid`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      console.log(`Exported melody as ${filename}.mid`);
-    } catch (error) {
-      console.error("MIDI export failed:", error);
-      throw new Error("Failed to export MIDI file");
-    }
-  }
-  /**
-   * Create basic MIDI data from notes
-   * This is a simplified implementation - for production you'd want a proper MIDI library
-   */
-  static createMIDIData(notes) {
-    const header = new Uint8Array([
-      77,
-      84,
-      104,
-      100,
-      // "MThd"
-      0,
-      0,
-      0,
-      6,
-      // Header length
-      0,
-      0,
-      // Format type 0
-      0,
-      1,
-      // Number of tracks
-      0,
-      96
-      // Ticks per quarter note (96)
-    ]);
-    const trackHeader = new Uint8Array([
-      77,
-      84,
-      114,
-      107
-      // "MTrk"
-    ]);
-    const events = [];
-    notes.forEach((note, index) => {
-      events.push(0);
-      events.push(144);
-      events.push(Math.max(0, Math.min(127, note.midiNumber)));
-      events.push(64);
-      events.push(96);
-      events.push(128);
-      events.push(Math.max(0, Math.min(127, note.midiNumber)));
-      events.push(0);
-    });
-    events.push(0, 255, 47, 0);
-    const trackData = new Uint8Array(events);
-    const trackLength = new Uint8Array(4);
-    const length = trackData.length;
-    trackLength[0] = length >> 24 & 255;
-    trackLength[1] = length >> 16 & 255;
-    trackLength[2] = length >> 8 & 255;
-    trackLength[3] = length & 255;
-    const midi = new Uint8Array(header.length + trackHeader.length + trackLength.length + trackData.length);
-    let offset = 0;
-    midi.set(header, offset);
-    offset += header.length;
-    midi.set(trackHeader, offset);
-    offset += trackHeader.length;
-    midi.set(trackLength, offset);
-    offset += trackLength.length;
-    midi.set(trackData, offset);
-    return midi;
-  }
-  /**
-   * Save transcription to browser storage
-   */
-  static saveToStorage(data, key) {
-    try {
-      localStorage.setItem(`whistle-${key}`, JSON.stringify(data));
-      console.log(`Saved transcription to storage: ${key}`);
-    } catch (error) {
-      console.error("Save to storage failed:", error);
-      throw new Error("Failed to save transcription");
-    }
-  }
-  /**
-   * Load transcription from browser storage
-   */
-  static loadFromStorage(key) {
-    try {
-      const data = localStorage.getItem(`whistle-${key}`);
-      if (data) {
-        return JSON.parse(data);
-      }
-      return null;
-    } catch (error) {
-      console.error("Load from storage failed:", error);
-      return null;
-    }
-  }
-  /**
-   * List all saved transcriptions
-   */
-  static listSavedTranscriptions() {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith("whistle-")) {
-        keys.push(key.replace("whistle-", ""));
-      }
-    }
-    return keys.sort();
-  }
-  /**
-   * Delete saved transcription
-   */
-  static deleteFromStorage(key) {
-    localStorage.removeItem(`whistle-${key}`);
-    console.log(`Deleted transcription: ${key}`);
-  }
-}
 function StaffNotation($$payload, $$props) {
   push();
   var $$store_subs;
   let width = fallback($$props["width"], 800);
   let height = fallback($$props["height"], 200);
-  let notes = fallback($$props["notes"], () => [], true);
+  let canvas = $$props["canvas"];
+  let noteConsolidator;
   onDestroy(() => {
   });
-  function addNote(note) {
-    const noteWithTime = { ...note, timestamp: Date.now() };
-    notes = [...notes, noteWithTime];
-    if (notes.length > 20) {
-      notes = notes.slice(-20);
-    }
-  }
-  async function exportToPNG() {
-    {
-      throw new Error("Canvas not available for export");
-    }
-  }
-  async function exportToMIDI() {
-    if (notes.length === 0) {
-      throw new Error("No notes to export");
-    }
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/:/g, "-");
-    await ExportService.exportToMIDI(notes, `whistle-melody-${timestamp}`);
-  }
-  if (store_get($$store_subs ??= {}, "$pitchResult", pitchResult) && store_get($$store_subs ??= {}, "$pitchResult", pitchResult).confidence > 0.7) {
-    const note = NoteConverter.frequencyToNote(store_get($$store_subs ??= {}, "$pitchResult", pitchResult).frequency, store_get($$store_subs ??= {}, "$pitchResult", pitchResult).confidence);
-    if (NoteConverter.isVocalRange(note.frequency)) {
-      addNote(note);
-    }
-  }
-  $$payload.out.push(`<div class="staff-container svelte-5rebku"><canvas${attr("width", width)}${attr("height", height)} class="staff-canvas svelte-5rebku"></canvas> <div class="controls svelte-5rebku"><button class="clear-btn svelte-5rebku">Clear Staff</button> <button class="export-btn svelte-5rebku"${attr(
-    "disabled",
-    // Add note with timestamp
-    // Keep only last 20 notes for performance
+  if (store_get($$store_subs ??= {}, "$pitchResult", pitchResult) && store_get($$store_subs ??= {}, "$pitchResult", pitchResult).confidence > 0.7 && noteConsolidator) ;
+  $$payload.out.push(`<div class="staff-container svelte-1595569"><canvas${attr("width", width)}${attr("height", height)} class="staff-canvas svelte-1595569"></canvas> <div class="controls svelte-1595569"><button class="clear-btn svelte-1595569">Clear Staff</button> <div class="note-info svelte-1595569">Notes: ${escape_html(
     // Clear canvas
     // Draw staff lines
     // Draw 5 staff lines
     // Draw treble clef symbol (simplified)
     // After clef
-    // Draw note head
-    // Draw stem
+    // Calculate positions based on note durations, not just index
+    // Calculate width based on note duration
+    // Draw note based on duration
+    // Draw duration text below staff for debugging
+    // Show note value
     // Draw ledger lines if needed
     // Draw note name below staff
+    // Update cumulative width for next note
+    // Calculate visual width based on note duration
+    // Width multipliers based on note value
+    // Whole notes take more space
+    // Half notes take more space  
+    // Quarter notes are baseline
+    // Eighth notes are compact
+    // Sixteenth notes are very compact
+    // Draw note head - filled for shorter durations, hollow for longer
+    // Draw stem for most note types
+    // Add flags for eighth and sixteenth notes
+    // For very long sustained notes, draw a horizontal line to show duration
+    // Dashed line
+    // Reset line dash
     // Draw ledger lines above staff
     // Draw ledger lines below staff
-    // Export functions
-    // Expose notes and export functions to parent component
-    notes.length === 0,
-    true
-  )}>Export PNG</button> <button class="export-btn svelte-5rebku"${attr("disabled", notes.length === 0, true)}>Export MIDI</button> <div class="note-info svelte-5rebku">Notes: ${escape_html(notes.length)}</div></div></div>`);
+    // Expose canvas to parent component for exports
+    store_get($$store_subs ??= {}, "$notes", notes).length
+  )}</div></div></div>`);
   if ($$store_subs) unsubscribe_stores($$store_subs);
-  bind_props($$props, { width, height, notes, exportToPNG, exportToMIDI });
+  bind_props($$props, { width, height, canvas });
   pop();
 }
 function SessionManager($$payload, $$props) {
   push();
-  let notes = fallback($$props["notes"], () => [], true);
+  let notes2 = fallback($$props["notes"], () => [], true);
   let lyrics = fallback($$props["lyrics"], "");
   let onLoadSession = fallback($$props["onLoadSession"], () => {
   });
+  let staffCanvas = fallback($$props["staffCanvas"], null);
   let savedSessions = [];
-  $$payload.out.push(`<div class="session-manager svelte-f0o818"><div class="session-controls svelte-f0o818"><button class="session-btn save-btn svelte-f0o818"${attr("disabled", notes.length === 0 && !lyrics.trim(), true)}>Save Session</button> <button class="session-btn load-btn svelte-f0o818"${attr("disabled", savedSessions.length === 0, true)}>Load Session</button> <button class="session-btn export-btn svelte-f0o818"${attr("disabled", notes.length === 0 && !lyrics.trim(), true)}>Export JSON</button></div> `);
+  $$payload.out.push(`<div class="session-manager svelte-f0o818"><div class="session-controls svelte-f0o818"><button class="session-btn save-btn svelte-f0o818"${attr("disabled", notes2.length === 0 && !lyrics.trim(), true)}>Save Session</button> <button class="session-btn load-btn svelte-f0o818"${attr("disabled", savedSessions.length === 0, true)}>Load Session</button> <button class="session-btn export-btn svelte-f0o818"${attr("disabled", notes2.length === 0, true)}>Export PNG</button> <button class="session-btn export-btn svelte-f0o818"${attr("disabled", notes2.length === 0, true)}>Export MIDI</button> <button class="session-btn export-btn svelte-f0o818"${attr("disabled", notes2.length === 0 && !lyrics.trim(), true)}>Export JSON</button></div> `);
   {
     $$payload.out.push("<!--[!-->");
   }
@@ -404,7 +158,7 @@ function SessionManager($$payload, $$props) {
     $$payload.out.push("<!--[!-->");
   }
   $$payload.out.push(`<!--]--></div>`);
-  bind_props($$props, { notes, lyrics, onLoadSession });
+  bind_props($$props, { notes: notes2, lyrics, onLoadSession, staffCanvas });
   pop();
 }
 function _page($$payload, $$props) {
@@ -421,6 +175,7 @@ function _page($$payload, $$props) {
   }
   function handleLoadSession(data) {
     audioStateActions.setSpeechTranscript(data.lyrics);
+    audioStateActions.setNotes(data.notes);
   }
   isRecording = store_get($$store_subs ??= {}, "$audioState", audioState).isRecording;
   isInitialized = store_get($$store_subs ??= {}, "$audioState", audioState).isInitialized;
@@ -480,9 +235,10 @@ function _page($$payload, $$props) {
   StaffNotation($$payload, { width: 800, height: 200 });
   $$payload.out.push(`<!----></section> <section class="session-section svelte-1n2elvy"><h3 class="svelte-1n2elvy">Session Management</h3> `);
   SessionManager($$payload, {
-    notes: [],
+    notes: store_get($$store_subs ??= {}, "$notes", notes),
     lyrics: currentTranscript,
-    onLoadSession: handleLoadSession
+    onLoadSession: handleLoadSession,
+    staffCanvas: null
   });
   $$payload.out.push(`<!----></section> <section class="lyrics-section svelte-1n2elvy"><h3 class="svelte-1n2elvy">🎤 Lyrics</h3> <div class="lyrics-status svelte-1n2elvy">`);
   if (speechListening) {

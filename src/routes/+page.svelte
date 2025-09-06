@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { AudioService } from '../lib/audio/AudioService.js';
-  import { audioState, pitchResult, speechTranscript, isSpeechListening, audioStateActions } from '../lib/stores/audioStore.js';
+  import { audioState, pitchResult, speechTranscript, isSpeechListening, notes, audioStateActions } from '../lib/stores/audioStore.js';
   import StaffNotation from '../lib/components/StaffNotation.svelte';
   import SessionManager from '../lib/components/SessionManager.svelte';
   import type { TranscriptionData } from '../lib/export/ExportService.js';
@@ -70,13 +70,8 @@
     // Clear current transcript and set new lyrics
     audioStateActions.setSpeechTranscript(data.lyrics);
     
-    // Load notes into staff notation
-    if (staffComponent) {
-      // Clear current notes first
-      staffComponent.notes.length = 0;
-      // Add loaded notes
-      staffComponent.notes.push(...data.notes);
-    }
+    // Load notes using centralized store
+    audioStateActions.setNotes(data.notes);
   }
 </script>
 
@@ -180,9 +175,10 @@
   <section class="session-section">
     <h3>Session Management</h3>
     <SessionManager 
-      notes={staffComponent?.notes || []}
+      notes={$notes}
       lyrics={currentTranscript}
       onLoadSession={handleLoadSession}
+      staffCanvas={staffComponent?.canvas || null}
     />
   </section>
 

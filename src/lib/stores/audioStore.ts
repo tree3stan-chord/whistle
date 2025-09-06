@@ -4,6 +4,7 @@
 import { writable, derived, type Readable } from 'svelte/store';
 import type { AudioState, PitchDetectionResult, AudioConfig } from '../audio/types.js';
 import type { SpeechResult } from '../audio/SpeechService.js';
+import type { MusicalNote } from '../audio/NoteConverter.js';
 
 // Core audio state
 export const audioState = writable<AudioState>({
@@ -31,6 +32,9 @@ export const pitchResult = writable<PitchDetectionResult | null>(null);
 export const speechResult = writable<SpeechResult | null>(null);
 export const speechTranscript = writable<string>('');
 export const isSpeechListening = writable<boolean>(false);
+
+// Notes management
+export const notes = writable<MusicalNote[]>([]);
 
 // Derived stores for convenience
 export const isRecording: Readable<boolean> = derived(
@@ -92,6 +96,23 @@ export const audioStateActions = {
     isSpeechListening.set(listening);
   },
   
+  // Notes management actions
+  addNote(note: MusicalNote) {
+    notes.update(currentNotes => [...currentNotes, note]);
+  },
+  
+  removeNote(index: number) {
+    notes.update(currentNotes => currentNotes.filter((_, i) => i !== index));
+  },
+  
+  clearNotes() {
+    notes.set([]);
+  },
+  
+  setNotes(newNotes: MusicalNote[]) {
+    notes.set(newNotes);
+  },
+  
   reset() {
     audioState.set({
       isRecording: false,
@@ -105,5 +126,6 @@ export const audioStateActions = {
     speechResult.set(null);
     speechTranscript.set('');
     isSpeechListening.set(false);
+    notes.set([]);
   }
 };

@@ -6,6 +6,7 @@
   export let notes: MusicalNote[] = [];
   export let lyrics: string = '';
   export let onLoadSession: (data: TranscriptionData) => void = () => {};
+  export let staffCanvas: HTMLCanvasElement | null = null;
   
   let savedSessions: string[] = [];
   let sessionName: string = '';
@@ -92,6 +93,41 @@
       console.error('Export failed:', error);
     }
   }
+  
+  async function exportToPNG() {
+    if (!staffCanvas) {
+      alert('Staff canvas not available for export');
+      return;
+    }
+    
+    if (notes.length === 0) {
+      alert('No notes to export');
+      return;
+    }
+    
+    try {
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      await ExportService.exportCanvasToPNG(staffCanvas, `whistle-staff-${timestamp}`);
+    } catch (error) {
+      alert('Failed to export PNG');
+      console.error('PNG export failed:', error);
+    }
+  }
+  
+  async function exportToMIDI() {
+    if (notes.length === 0) {
+      alert('No notes to export');
+      return;
+    }
+    
+    try {
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      await ExportService.exportToMIDI(notes, `whistle-melody-${timestamp}`);
+    } catch (error) {
+      alert('Failed to export MIDI');
+      console.error('MIDI export failed:', error);
+    }
+  }
 </script>
 
 <div class="session-manager">
@@ -101,6 +137,12 @@
     </button>
     <button on:click={() => showLoadDialog = true} class="session-btn load-btn" disabled={savedSessions.length === 0}>
       Load Session
+    </button>
+    <button on:click={exportToPNG} class="session-btn export-btn" disabled={notes.length === 0}>
+      Export PNG
+    </button>
+    <button on:click={exportToMIDI} class="session-btn export-btn" disabled={notes.length === 0}>
+      Export MIDI
     </button>
     <button on:click={exportToJSON} class="session-btn export-btn" disabled={notes.length === 0 && !lyrics.trim()}>
       Export JSON
