@@ -119,6 +119,16 @@
 </svelte:head>
 
 <main class="app-container">
+  <!-- Portrait Orientation Warning -->
+  <div class="portrait-warning">
+    <div class="portrait-content">
+      <div class="rotate-icon">📱↻</div>
+      <h2>Please Rotate Your Device</h2>
+      <p>Cadenza requires landscape orientation for the best musical notation experience.</p>
+      <p class="rotate-instruction">Turn your device sideways to continue</p>
+    </div>
+  </div>
+
   <!-- Static Navbar -->
   <Navbar 
     {isInitialized}
@@ -281,14 +291,6 @@
     </DraggableModal>
   {/if}
 
-  <!-- Fixed Clear Notes Button -->
-  <button 
-    class="clear-notes-btn fixed-btn"
-    on:click={() => audioStateActions.clearNotes()}
-    disabled={$notes.length === 0}
-  >
-    Clear Notes ({$notes.length})
-  </button>
 </main>
 
 <style>
@@ -299,6 +301,86 @@
     overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  }
+
+  /* Portrait Orientation Warning */
+  .portrait-warning {
+    display: none; /* Hidden by default */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .portrait-content {
+    text-align: center;
+    padding: 2rem;
+    max-width: 400px;
+  }
+
+  .rotate-icon {
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
+    animation: rotate-pulse 2s ease-in-out infinite;
+  }
+
+  .portrait-content h2 {
+    margin: 0 0 1rem 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+  }
+
+  .portrait-content p {
+    margin: 0.5rem 0;
+    font-size: 1.1rem;
+    opacity: 0.9;
+    line-height: 1.4;
+  }
+
+  .rotate-instruction {
+    font-weight: 600;
+    margin-top: 1.5rem !important;
+    font-size: 1rem !important;
+  }
+
+  @keyframes rotate-pulse {
+    0%, 100% { 
+      transform: scale(1) rotate(0deg);
+      opacity: 0.8;
+    }
+    50% { 
+      transform: scale(1.1) rotate(5deg);
+      opacity: 1;
+    }
+  }
+
+  /* Show portrait warning and hide main content on mobile portrait */
+  @media screen and (max-width: 768px) and (orientation: portrait) {
+    .portrait-warning {
+      display: flex;
+    }
+    
+    /* Hide all main content in portrait */
+    .app-container > :not(.portrait-warning) {
+      display: none;
+    }
+  }
+
+  /* Additional check for very narrow landscape screens */
+  @media screen and (max-height: 500px) and (max-width: 800px) {
+    .portrait-warning {
+      display: flex;
+    }
+    
+    .app-container > :not(.portrait-warning) {
+      display: none;
+    }
   }
 
   .staff-canvas-container {
@@ -316,6 +398,7 @@
   /* Recording Controls */
   .recording-controls {
     text-align: center;
+    min-width: 200px;
   }
 
   .btn-large {
@@ -504,34 +587,6 @@
     background: #545b62;
   }
 
-  .fixed-btn {
-    position: fixed;
-    bottom: 2rem;
-    right: 50%;
-    transform: translateX(50%);
-    z-index: 20;
-    padding: 12px 24px;
-    background: rgba(40, 167, 69, 0.9);
-    color: white;
-    border: none;
-    border-radius: 25px;
-    font-weight: 500;
-    cursor: pointer;
-    backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 16px rgba(40, 167, 69, 0.3);
-  }
-
-  .fixed-btn:hover:not(:disabled) {
-    background: rgba(40, 167, 69, 1);
-    transform: translateX(50%) translateY(-2px);
-    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
-  }
-
-  .fixed-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
 
   .status-grid {

@@ -406,16 +406,6 @@
     return (midiNumber - referenceMidi) / 2;  // Each staff line is 2 semitones
   }
 
-  function clearNotes() {
-    audioStateActions.clearNotes();
-    if (sustainedNoteHandler) {
-      sustainedNoteHandler.reset();
-    }
-    if (registerDetector) {
-      registerDetector.reset();
-      currentClef = 'treble';
-    }
-  }
   
   // Expose canvas to parent component for exports
   export { canvas };
@@ -428,14 +418,6 @@
     {height}
     class="staff-canvas"
   ></canvas>
-  <div class="controls">
-    <button on:click={clearNotes} class="clear-btn">
-      Clear Staff
-    </button>
-    <div class="note-info">
-      Notes: {$notes.length}
-    </div>
-  </div>
 </div>
 
 <style>
@@ -453,29 +435,4 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   }
   
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-  
-  .clear-btn {
-    padding: 8px 16px;
-    background: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  
-  .clear-btn:hover {
-    background: #c82333;
-  }
-  
-  .note-info {
-    font-size: 14px;
-    color: #666;
-    font-family: monospace;
-  }
 </style>

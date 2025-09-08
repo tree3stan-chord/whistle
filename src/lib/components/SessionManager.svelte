@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { ExportService, type TranscriptionData } from '../export/ExportService.js';
   import type { MusicalNote } from '../audio/NoteConverter.js';
+  import { audioStateActions } from '../stores/audioStore.js';
   
   export let notes: MusicalNote[] = [];
   export let lyrics: string = '';
@@ -131,6 +132,22 @@
 </script>
 
 <div class="session-manager">
+  <!-- Staff Management -->
+  <div class="staff-management">
+    <div class="staff-info">
+      <span class="staff-label">Notes on Staff:</span>
+      <span class="staff-count">{notes.length}</span>
+    </div>
+    <button 
+      on:click={() => audioStateActions.clearNotes()} 
+      class="session-btn clear-btn" 
+      disabled={notes.length === 0}
+    >
+      🗑 Clear Staff
+    </button>
+  </div>
+
+  <!-- Session Controls -->
   <div class="session-controls">
     <button on:click={() => showSaveDialog = true} class="session-btn save-btn" disabled={notes.length === 0 && !lyrics.trim()}>
       Save Session
@@ -218,6 +235,50 @@
 <style>
   .session-manager {
     margin: 1rem 0;
+  }
+
+  .staff-management {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  }
+
+  .staff-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .staff-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #666;
+  }
+
+  .staff-count {
+    background: #007bff;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 11px;
+    min-width: 18px;
+    text-align: center;
+  }
+
+  .clear-btn {
+    background: #dc3545 !important;
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+    min-width: auto !important;
+  }
+
+  .clear-btn:hover:not(:disabled) {
+    background: #c82333 !important;
   }
   
   .session-controls {
