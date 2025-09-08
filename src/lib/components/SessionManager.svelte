@@ -150,9 +150,21 @@
   </div>
   
   {#if showSaveDialog}
-    <div class="dialog-overlay" on:click={() => showSaveDialog = false}>
-      <div class="dialog" on:click|stopPropagation>
-        <h3>Save Session</h3>
+    <div 
+      class="dialog-overlay" 
+      role="button" 
+      tabindex="0"
+      on:click={() => showSaveDialog = false}
+      on:keydown={(e) => e.key === 'Escape' && (showSaveDialog = false)}
+    >
+      <div 
+        class="dialog" 
+        role="dialog"
+        aria-labelledby="save-dialog-title"
+        on:click|stopPropagation
+        on:keydown|stopPropagation
+      >
+        <h3 id="save-dialog-title">Save Session</h3>
         <input 
           type="text" 
           bind:value={sessionName} 
@@ -169,9 +181,21 @@
   {/if}
   
   {#if showLoadDialog}
-    <div class="dialog-overlay" on:click={() => showLoadDialog = false}>
-      <div class="dialog" on:click|stopPropagation>
-        <h3>Load Session</h3>
+    <div 
+      class="dialog-overlay" 
+      role="button" 
+      tabindex="0"
+      on:click={() => showLoadDialog = false}
+      on:keydown={(e) => e.key === 'Escape' && (showLoadDialog = false)}
+    >
+      <div 
+        class="dialog" 
+        role="dialog"
+        aria-labelledby="load-dialog-title"
+        on:click|stopPropagation
+        on:keydown|stopPropagation
+      >
+        <h3 id="load-dialog-title">Load Session</h3>
         <div class="session-list">
           {#each savedSessions as session}
             <div class="session-item">

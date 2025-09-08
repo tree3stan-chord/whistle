@@ -2,8 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { AudioService } from '../lib/audio/AudioService.js';
   import { audioState, pitchResult, speechTranscript, isSpeechListening, notes, audioStateActions } from '../lib/stores/audioStore.js';
+  import { modalActions, getDefaultModalPositions } from '../lib/stores/modalStore.js';
   import StaffNotation from '../lib/components/StaffNotation.svelte';
   import SessionManager from '../lib/components/SessionManager.svelte';
+  import DraggableModal from '../lib/components/DraggableModal.svelte';
+  import Navbar from '../lib/components/Navbar.svelte';
   import type { TranscriptionData } from '../lib/export/ExportService.js';
   
   let audioService: AudioService | null = null;
@@ -22,6 +25,42 @@
   onMount(() => {
     mounted = true;
     audioService = new AudioService();
+    
+    // Initialize modal positions
+    const defaultPositions = getDefaultModalPositions();
+    
+    // Register all modals with their configurations
+    modalActions.registerModal({
+      id: 'recording-control',
+      title: 'Recording Control',
+      initialPosition: defaultPositions['recording-control'],
+      minimizable: true,
+      persistent: true
+    });
+    
+    modalActions.registerModal({
+      id: 'status-monitor',
+      title: 'Status Monitor',
+      initialPosition: defaultPositions['status-monitor'],
+      minimizable: true,
+      persistent: true
+    });
+    
+    modalActions.registerModal({
+      id: 'session-manager',
+      title: 'Session Manager',
+      initialPosition: defaultPositions['session-manager'],
+      minimizable: true,
+      persistent: true
+    });
+    
+    modalActions.registerModal({
+      id: 'lyrics-panel',
+      title: 'Lyrics',
+      initialPosition: defaultPositions['lyrics-panel'],
+      minimizable: true,
+      persistent: true
+    });
   });
 
   onDestroy(async () => {
@@ -79,41 +118,58 @@
   <title>Cadenza - Vocal Transcription</title>
 </svelte:head>
 
-<main class="container">
-  <header>
-    <h1>🎼 Cadenza - Intelligent Vocal Transcription</h1>
-    <p>Advanced vocal analysis with automatic clef detection and sustained note recognition</p>
-  </header>
+<main class="app-container">
+  <!-- Static Navbar -->
+  <Navbar 
+    {isInitialized}
+    {mounted}
+    onInitializeAudio={initializeAudio}
+  />
 
-  <section class="controls">
-    <div class="button-group">
-      {#if !isInitialized}
-        <button 
-          on:click={initializeAudio}
-          disabled={!mounted}
-          class="btn btn-primary"
-        >
-          Initialize Audio
-        </button>
-      {:else if !isRecording}
-        <button 
-          on:click={startRecording}
-          class="btn btn-success"
-        >
-          🎤 Start Recording
-        </button>
+  <!-- Full Viewport Staff Canvas -->
+  <div class="staff-canvas-container">
+    <StaffNotation bind:this={staffComponent} width={1200} height={800} />
+  </div>
+
+  <!-- Recording Control Modal -->
+  <DraggableModal config={{
+    id: 'recording-control',
+    title: 'Recording Control',
+    initialPosition: { x: 20, y: 80 },
+    minimizable: true,
+    persistent: true
+  }}>
+    <div class="recording-controls">
+      {#if isInitialized}
+        {#if !isRecording}
+          <button 
+            on:click={startRecording}
+            class="btn btn-success btn-large"
+          >
+            🎤 Start Recording
+          </button>
+        {:else}
+          <button 
+            on:click={stopRecording}
+            class="btn btn-danger btn-large"
+          >
+            ⏹ Stop Recording
+          </button>
+        {/if}
       {:else}
-        <button 
-          on:click={stopRecording}
-          class="btn btn-danger"
-        >
-          ⏹ Stop Recording
-        </button>
+        <p class="info-text">Initialize audio from the navbar first</p>
       {/if}
     </div>
-  </section>
+  </DraggableModal>
 
-  <section class="status">
+  <!-- Status Monitor Modal -->
+  <DraggableModal config={{
+    id: 'status-monitor',
+    title: 'Status Monitor',
+    initialPosition: { x: window?.innerWidth - 320 || 800, y: 80 },
+    minimizable: true,
+    persistent: true
+  }}>
     <div class="status-grid">
       <div class="status-item">
         <span class="status-label">Status:</span>
@@ -151,56 +207,49 @@
         </span>
       </div>
     </div>
-  </section>
+  </DraggableModal>
 
-  {#if error}
-    <section class="error">
-      <h3>❌ Error</h3>
-      <p class="error-message">{error}</p>
-      <button 
-        on:click={() => audioStateActions.setError(null)}
-        class="btn btn-secondary"
-      >
-        Clear Error
-      </button>
-    </section>
-  {/if}
-
-  <section class="staff-section">
-    <h3>Staff Notation</h3>
-    <p>Notes will appear here as you sing</p>
-    <StaffNotation bind:this={staffComponent} width={800} height={200} />
-  </section>
-
-  <section class="session-section">
-    <h3>Session Management</h3>
+  <!-- Session Manager Modal -->
+  <DraggableModal config={{
+    id: 'session-manager',
+    title: 'Session Manager',
+    initialPosition: { x: 20, y: window?.innerHeight - 200 || 400 },
+    minimizable: true,
+    persistent: true
+  }}>
     <SessionManager 
       notes={$notes}
       lyrics={currentTranscript}
       onLoadSession={handleLoadSession}
       staffCanvas={staffComponent?.canvas || null}
     />
-  </section>
+  </DraggableModal>
 
-  <section class="lyrics-section">
-    <h3>🎤 Lyrics</h3>
-    <div class="lyrics-status">
-      {#if speechListening}
-        <span class="listening-indicator">🔴 Listening for lyrics...</span>
-      {:else}
-        <span class="not-listening">Speech recognition inactive</span>
-      {/if}
-    </div>
-    
-    <div class="lyrics-display">
-      {#if currentTranscript.trim()}
-        <p class="transcript">{currentTranscript}</p>
-      {:else}
-        <p class="no-lyrics">Start singing with words to see lyrics here</p>
-      {/if}
-    </div>
-    
-    <div class="lyrics-controls">
+  <!-- Lyrics Panel Modal -->
+  <DraggableModal config={{
+    id: 'lyrics-panel',
+    title: 'Lyrics',
+    initialPosition: { x: window?.innerWidth - 320 || 600, y: window?.innerHeight - 200 || 400 },
+    minimizable: true,
+    persistent: true
+  }}>
+    <div class="lyrics-content">
+      <div class="lyrics-status">
+        {#if speechListening}
+          <span class="listening-indicator">🔴 Listening for lyrics...</span>
+        {:else}
+          <span class="not-listening">Speech recognition inactive</span>
+        {/if}
+      </div>
+      
+      <div class="lyrics-display">
+        {#if currentTranscript.trim()}
+          <p class="transcript">{currentTranscript}</p>
+        {:else}
+          <p class="no-lyrics">Start singing with words to see lyrics here</p>
+        {/if}
+      </div>
+      
       <button 
         on:click={() => audioStateActions.setSpeechTranscript('')}
         class="clear-lyrics-btn"
@@ -209,54 +258,214 @@
         Clear Lyrics
       </button>
     </div>
-  </section>
+  </DraggableModal>
 
-  <section class="debug">
-    <h3>Debug Info</h3>
-    <pre>{JSON.stringify({
-      isInitialized,
-      isRecording,
-      deviceLabel,
-      pitchResult: currentPitch,
-      error
-    }, null, 2)}</pre>
-  </section>
+  <!-- Error Message Modal (if any) -->
+  {#if error}
+    <DraggableModal config={{
+      id: 'error-modal',
+      title: 'Error',
+      initialPosition: { x: window?.innerWidth / 2 - 150 || 300, y: 120 },
+      minimizable: false,
+      persistent: false
+    }} className="error-modal">
+      <div class="error-content">
+        <p class="error-message">{error}</p>
+        <button 
+          on:click={() => audioStateActions.setError(null)}
+          class="btn btn-secondary"
+        >
+          Clear Error
+        </button>
+      </div>
+    </DraggableModal>
+  {/if}
+
+  <!-- Fixed Clear Notes Button -->
+  <button 
+    class="clear-notes-btn fixed-btn"
+    on:click={() => audioStateActions.clearNotes()}
+    disabled={$notes.length === 0}
+  >
+    Clear Notes ({$notes.length})
+  </button>
 </main>
 
 <style>
-  .container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem;
+  .app-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   }
 
-  header {
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-
-  h1 {
-    color: #333;
-    margin-bottom: 0.5rem;
-  }
-
-  .controls {
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-
-  .button-group {
+  .staff-canvas-container {
+    position: absolute;
+    top: 60px; /* Account for navbar height */
+    left: 0;
+    width: 100%;
+    height: calc(100% - 60px);
+    z-index: 1;
     display: flex;
-    gap: 1rem;
+    align-items: center;
     justify-content: center;
   }
 
-  .btn {
+  /* Recording Controls */
+  .recording-controls {
+    text-align: center;
+  }
+
+  .btn-large {
+    font-size: 16px;
     padding: 12px 24px;
+    width: 100%;
+  }
+
+  .info-text {
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    margin: 0;
+  }
+
+  /* Status Grid */
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .status-label {
+    font-weight: 500;
+    color: #666;
+    font-size: 12px;
+  }
+
+  .status-value {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-weight: 500;
+    font-size: 12px;
+  }
+
+  .status-value.recording {
+    color: #dc3545;
+    animation: pulse 1s infinite;
+  }
+
+  .frequency {
+    color: #007bff;
+  }
+
+  .confidence {
+    color: #28a745;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Lyrics Content */
+  .lyrics-content {
+    min-width: 250px;
+  }
+
+  .lyrics-status {
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+
+  .listening-indicator {
+    color: #dc3545;
+    font-weight: 500;
+    animation: pulse 1s infinite;
+  }
+
+  .not-listening {
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  .lyrics-display {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .transcript {
+    font-size: 14px;
+    line-height: 1.3;
+    color: #495057;
+    margin: 0;
+    text-align: left;
+    font-family: Georgia, serif;
+  }
+
+  .no-lyrics {
+    color: #6c757d;
+    font-style: italic;
+    margin: 0;
+    font-size: 12px;
+  }
+
+  .clear-lyrics-btn {
+    padding: 6px 12px;
+    background: #6c757d;
+    color: white;
     border: none;
     border-radius: 6px;
-    font-size: 16px;
+    cursor: pointer;
+    font-size: 12px;
+    width: 100%;
+  }
+
+  .clear-lyrics-btn:hover:not(:disabled) {
+    background: #545b62;
+  }
+
+  .clear-lyrics-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Error Modal */
+  .error-content {
+    text-align: center;
+  }
+
+  .error-message {
+    color: #721c24;
+    margin-bottom: 1rem;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+  }
+
+  /* Button Styles */
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -267,14 +476,6 @@
     cursor: not-allowed;
   }
 
-  .btn-primary {
-    background: #007bff;
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: #0056b3;
-  }
 
   .btn-success {
     background: #28a745;
@@ -303,17 +504,40 @@
     background: #545b62;
   }
 
-  .status {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+  .fixed-btn {
+    position: fixed;
+    bottom: 2rem;
+    right: 50%;
+    transform: translateX(50%);
+    z-index: 20;
+    padding: 12px 24px;
+    background: rgba(40, 167, 69, 0.9);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-weight: 500;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 16px rgba(40, 167, 69, 0.3);
   }
+
+  .fixed-btn:hover:not(:disabled) {
+    background: rgba(40, 167, 69, 1);
+    transform: translateX(50%) translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+  }
+
+  .fixed-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
 
   .status-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
   }
 
   .status-item {
@@ -321,9 +545,9 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem;
-    background: white;
-    border-radius: 4px;
-    border: 1px solid #e9ecef;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
   }
 
   .status-label {
@@ -354,18 +578,6 @@
     50% { opacity: 0.5; }
   }
 
-  .error {
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
-  }
-
-  .error h3 {
-    margin-top: 0;
-    color: #721c24;
-  }
 
   .error-message {
     color: #721c24;
@@ -373,63 +585,8 @@
     font-family: 'Monaco', 'Menlo', monospace;
   }
 
-  .debug {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 1.5rem;
-  }
-
-  .debug h3 {
-    margin-top: 0;
-    color: #495057;
-  }
-
-  .debug pre {
-    background: white;
-    border: 1px solid #e9ecef;
-    border-radius: 4px;
-    padding: 1rem;
-    overflow-x: auto;
-    font-size: 12px;
-    color: #495057;
-  }
-
-  .staff-section {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-
-  .staff-section h3 {
-    margin-top: 0;
-    margin-bottom: 0.5rem;
-    color: #495057;
-  }
-
-  .staff-section p {
-    color: #6c757d;
-    margin-bottom: 1.5rem;
-    font-style: italic;
-  }
-
-  .lyrics-section {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-
-  .lyrics-section h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    color: #495057;
-  }
-
   .lyrics-status {
-    margin-bottom: 1rem;
+    font-size: 0.85rem;
   }
 
   .listening-indicator {
@@ -444,20 +601,20 @@
   }
 
   .lyrics-display {
-    background: white;
-    border: 2px solid #e9ecef;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 8px;
-    padding: 2rem;
+    padding: 1rem;
     margin: 1rem 0;
-    min-height: 80px;
+    min-height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .transcript {
-    font-size: 18px;
-    line-height: 1.4;
+    font-size: 14px;
+    line-height: 1.3;
     color: #495057;
     margin: 0;
     text-align: left;
@@ -471,13 +628,14 @@
   }
 
   .clear-lyrics-btn {
-    padding: 8px 16px;
+    padding: 6px 12px;
     background: #6c757d;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
+    width: 100%;
   }
 
   .clear-lyrics-btn:hover:not(:disabled) {
@@ -487,19 +645,5 @@
   .clear-lyrics-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-  
-  .session-section {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-
-  .session-section h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    color: #495057;
   }
 </style>
