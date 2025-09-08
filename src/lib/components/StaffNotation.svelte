@@ -9,6 +9,12 @@
   export let width = 800;
   export let height = 200;
   
+  // Responsive sizing based on viewport
+  let viewportWidth: number;
+  let viewportHeight: number;
+  let responsiveWidth: number;
+  let responsiveHeight: number;
+  
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
   let animationId: number;
@@ -16,19 +22,59 @@
   let registerDetector: RegisterDetector;
   let currentClef: ClefType = 'treble';
   
-  // Staff rendering constants
-  const STAFF_MARGIN = 50;
-  const LINE_SPACING = 12;
+  // Staff rendering constants (base values, will be scaled)
+  let STAFF_MARGIN = 50;
+  let LINE_SPACING = 12;
   const STAFF_LINES = 5;
-  const NOTE_RADIUS = 4;
-  const NOTE_SPACING = 20;
+  let NOTE_RADIUS = 4;
+  let NOTE_SPACING = 20;
+  let CLEF_FONT_SIZE = 32;
   
+  // Calculate responsive dimensions
+  function updateResponsiveDimensions() {
+    viewportWidth = window.innerWidth;
+    viewportHeight = window.innerHeight;
+    
+    // Use 90% of viewport width, accounting for margins and modals
+    const availableWidth = Math.max(viewportWidth * 0.9, 600);
+    // Use 25% of viewport height for the staff, with minimum and maximum bounds
+    const availableHeight = Math.max(Math.min(viewportHeight * 0.25, 300), 150);
+    
+    responsiveWidth = Math.min(availableWidth, 1200); // Cap at reasonable max
+    responsiveHeight = availableHeight;
+    
+    // Scale constants based on size
+    const scaleFactor = Math.min(responsiveWidth / 800, responsiveHeight / 200);
+    STAFF_MARGIN = Math.max(50 * scaleFactor, 30);
+    LINE_SPACING = Math.max(12 * scaleFactor, 8);
+    NOTE_RADIUS = Math.max(4 * scaleFactor, 3);
+    NOTE_SPACING = Math.max(20 * scaleFactor, 15);
+    CLEF_FONT_SIZE = Math.max(32 * scaleFactor, 24);
+  }
+
   onMount(() => {
+    updateResponsiveDimensions();
+    
     if (canvas) {
       ctx = canvas.getContext('2d')!;
       drawStaff();
       startAnimation();
     }
+    
+    // Update on window resize
+    const handleResize = () => {
+      updateResponsiveDimensions();
+      if (ctx) {
+        drawStaff();
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  });
     
     // Initialize sustained note handler
     sustainedNoteHandler = new SustainedNoteHandler(
@@ -54,7 +100,6 @@
     
     // Initialize register detector
     registerDetector = new RegisterDetector();
-  });
   
   onDestroy(() => {
     if (animationId) {
@@ -118,18 +163,21 @@
   function drawStaff() {
     if (!ctx) return;
     
+    const currentWidth = responsiveWidth || width;
+    const currentHeight = responsiveHeight || height;
+    
     // Clear canvas
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, currentWidth, currentHeight);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, currentWidth, currentHeight);
     
     // Draw staff lines
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max(1, currentHeight / 200); // Scale line width
     
-    const staffY = height / 2;
+    const staffY = currentHeight / 2;
     const staffStart = STAFF_MARGIN;
-    const staffEnd = width - STAFF_MARGIN;
+    const staffEnd = currentWidth - STAFF_MARGIN;
     
     // Draw 5 staff lines
     for (let i = 0; i < STAFF_LINES; i++) {
@@ -147,7 +195,7 @@
   function drawClefSymbol(x: number, staffY: number) {
     if (!ctx) return;
     
-    ctx.font = '32px serif';
+    ctx.font = `${CLEF_FONT_SIZE}px serif`;
     ctx.fillStyle = '#000000';
     
     switch (currentClef) {
@@ -166,8 +214,9 @@
   function drawNotes() {
     if (!ctx) return;
     
-    const staffY = height / 2;
-    const staffStart = STAFF_MARGIN + 60; // After clef
+    const currentHeight = responsiveHeight || height;
+    const staffY = currentHeight / 2;
+    const staffStart = STAFF_MARGIN + (CLEF_FONT_SIZE * 1.5); // After clef, scaled
     
     // Calculate positions based on note durations, not just index
     let cumulativeWidth = 0;
@@ -193,6 +242,8 @@
           `${durationSeconds.toFixed(1)}s` : 
           `${Math.round(note.duration)}ms`;
         
+        const durationFontSize = Math.max(8, CLEF_FONT_SIZE * 0.25);
+        ctx.font = `${durationFontSize}px Arial`;
         ctx.fillText(durationText, x, staffY + LINE_SPACING * 4);
         
         // Show note value with sustaining indicator
@@ -204,7 +255,8 @@
         // Add visual sustaining indicator for notes being extended
         if (note.duration > 800 && !((note as any).tied)) {
           ctx.fillStyle = '#4CAF50';
-          ctx.font = '8px Arial';
+          const sustainFontSize = Math.max(6, CLEF_FONT_SIZE * 0.19);
+          ctx.font = `${sustainFontSize}px Arial`;
           ctx.fillText('sustaining...', x, y - NOTE_RADIUS - 8);
         }
       }
@@ -213,10 +265,11 @@
       drawLedgerLines(x, y, note.staffPosition);
       
       // Draw note name below staff
-      ctx.font = '10px sans-serif';
+      const noteFontSize = Math.max(10, CLEF_FONT_SIZE * 0.31);
+      ctx.font = `${noteFontSize}px sans-serif`;
       ctx.fillStyle = '#666666';
       const textWidth = ctx.measureText(note.noteName).width;
-      ctx.fillText(note.noteName, x - textWidth/2, height - 20);
+      ctx.fillText(note.noteName, x - textWidth/2, currentHeight - (STAFF_MARGIN * 0.4));
       
       // Update cumulative width for next note
       cumulativeWidth += noteWidth + NOTE_SPACING;
@@ -301,7 +354,8 @@
       
       // Add small tie indicator text
       ctx.fillStyle = '#4CAF50';
-      ctx.font = '8px Arial';
+      const tieFontSize = Math.max(6, CLEF_FONT_SIZE * 0.19);
+      ctx.font = `${tieFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('tie→', x + noteWidth + tieRadius, tieY + 12);
     } else if (tieType === 'end') {
@@ -312,7 +366,8 @@
       
       // Add small tie indicator text
       ctx.fillStyle = '#4CAF50';
-      ctx.font = '8px Arial';
+      const tieFontSize = Math.max(6, CLEF_FONT_SIZE * 0.19);
+      ctx.font = `${tieFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('←end', x - tieRadius, tieY + 12);
     } else if (tieType === 'continue') {
@@ -327,7 +382,8 @@
       
       // Add small tie indicator text
       ctx.fillStyle = '#4CAF50';
-      ctx.font = '8px Arial';
+      const tieFontSize = Math.max(6, CLEF_FONT_SIZE * 0.19);
+      ctx.font = `${tieFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('←tie→', x + noteWidth / 2, tieY + 12);
     }
@@ -414,8 +470,8 @@
 <div class="staff-container">
   <canvas 
     bind:this={canvas} 
-    {width} 
-    {height}
+    width={responsiveWidth || width} 
+    height={responsiveHeight || height}
     class="staff-canvas"
   ></canvas>
 </div>
@@ -425,7 +481,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
   }
   
   .staff-canvas {
@@ -433,6 +493,20 @@
     border-radius: 8px;
     background: white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  /* Ensure responsive behavior */
+  @media (max-width: 768px) {
+    .staff-container {
+      padding: 5px;
+    }
+    
+    .staff-canvas {
+      border-width: 1px;
+    }
   }
   
 </style>

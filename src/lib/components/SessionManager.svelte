@@ -177,6 +177,7 @@
       <div 
         class="dialog" 
         role="dialog"
+        tabindex="0"
         aria-labelledby="save-dialog-title"
         on:click|stopPropagation
         on:keydown|stopPropagation
@@ -208,6 +209,7 @@
       <div 
         class="dialog" 
         role="dialog"
+        tabindex="0"
         aria-labelledby="load-dialog-title"
         on:click|stopPropagation
         on:keydown|stopPropagation
