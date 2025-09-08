@@ -3,6 +3,7 @@
   import { pitchResult, notes, isRecording, audioStateActions } from '../stores/audioStore.js';
   import { NoteConverter, type MusicalNote } from '../audio/NoteConverter.js';
   import { SustainedNoteHandler } from '../audio/SustainedNoteHandler.js';
+  import { RegisterDetector, type ClefType } from '../audio/RegisterDetector.js';
   import { ExportService } from '../export/ExportService.js';
   
   export let width = 800;
@@ -12,6 +13,8 @@
   let ctx: CanvasRenderingContext2D;
   let animationId: number;
   let sustainedNoteHandler: SustainedNoteHandler;
+  let registerDetector: RegisterDetector;
+  let currentClef: ClefType = 'treble';
   
   // Staff rendering constants
   const STAFF_MARGIN = 50;
@@ -48,6 +51,9 @@
         updateInterval: 100        // Update every 100ms
       }
     );
+    
+    // Initialize register detector
+    registerDetector = new RegisterDetector();
   });
   
   onDestroy(() => {
@@ -65,18 +71,28 @@
   }
   
   function processRawNote(rawNote: MusicalNote) {
-    // Add timestamp for sustained note processing
-    const noteWithTime = {
+    // Analyze register and potentially change clef
+    if (registerDetector) {
+      const newClef = registerDetector.analyzeNote(rawNote);
+      if (newClef !== currentClef) {
+        currentClef = newClef;
+        console.log(`Cadenza: Clef changed to ${currentClef}`);
+      }
+    }
+    
+    // Recalculate staff position for current clef
+    const noteWithCorrectStaffPosition = {
       ...rawNote,
+      staffPosition: calculateStaffPosition(rawNote, currentClef),
       timestamp: Date.now()
     };
     
     // Process through sustained note handler
-    const shouldAddNote = sustainedNoteHandler.processNote(noteWithTime, $notes.length);
+    const shouldAddNote = sustainedNoteHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
     
     // Only add as new note if not extending an existing sustained note
     if (shouldAddNote) {
-      audioStateActions.addNote(noteWithTime);
+      audioStateActions.addNote(noteWithCorrectStaffPosition);
     }
     
     // Keep only last 10 notes for performance (since notes are now longer/sustained)
@@ -124,12 +140,29 @@
       ctx.stroke();
     }
     
-    // Draw treble clef symbol (simplified)
-    ctx.font = '32px serif';
-    ctx.fillStyle = '#000000';
-    ctx.fillText('𝄞', staffStart + 10, staffY + 5);
+    // Draw clef symbol based on current clef
+    drawClefSymbol(staffStart + 10, staffY);
   }
   
+  function drawClefSymbol(x: number, staffY: number) {
+    if (!ctx) return;
+    
+    ctx.font = '32px serif';
+    ctx.fillStyle = '#000000';
+    
+    switch (currentClef) {
+      case 'treble':
+        ctx.fillText('𝄞', x, staffY + 5);
+        break;
+      case 'bass':
+        ctx.fillText('𝄢', x, staffY - 5);
+        break;
+      case 'alto':
+        ctx.fillText('𝄡', x, staffY);
+        break;
+    }
+  }
+
   function drawNotes() {
     if (!ctx) return;
     
@@ -148,17 +181,31 @@
       // Draw note based on duration
       drawNoteSymbol(x, y, note, noteWidth);
       
-      // Draw duration text below staff for debugging
+      // Draw enhanced duration display for sustained notes
       if (note.duration) {
-        ctx.fillStyle = '#888888';
+        ctx.fillStyle = note.duration > 1000 ? '#2196F3' : '#888888'; // Blue for sustained notes
         ctx.font = '10px Arial';
         ctx.textAlign = 'center';
-        const durationText = `${Math.round(note.duration)}ms`;
+        
+        // Show duration in more readable format
+        const durationSeconds = note.duration / 1000;
+        const durationText = durationSeconds >= 1 ? 
+          `${durationSeconds.toFixed(1)}s` : 
+          `${Math.round(note.duration)}ms`;
+        
         ctx.fillText(durationText, x, staffY + LINE_SPACING * 4);
         
-        // Show note value
+        // Show note value with sustaining indicator
         if (note.noteValue) {
-          ctx.fillText(note.noteValue, x, staffY + LINE_SPACING * 5);
+          const sustainIndicator = note.duration > 1000 ? ' 🎵' : '';
+          ctx.fillText(note.noteValue + sustainIndicator, x, staffY + LINE_SPACING * 5);
+        }
+        
+        // Add visual sustaining indicator for notes being extended
+        if (note.duration > 800 && !((note as any).tied)) {
+          ctx.fillStyle = '#4CAF50';
+          ctx.font = '8px Arial';
+          ctx.fillText('sustaining...', x, y - NOTE_RADIUS - 8);
         }
       }
       
@@ -235,54 +282,54 @@
     if ((note as any).tied) {
       drawTie(x, y, noteWidth, (note as any).tied, color);
     }
-    
-    // For very long sustained notes, draw a horizontal line to show duration
-    if (note.duration && note.duration > 3000 && noteWidth > NOTE_RADIUS * 3) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]); // Dashed line
-      ctx.beginPath();
-      ctx.moveTo(x + NOTE_RADIUS * 2, y - 8);
-      ctx.lineTo(x + noteWidth - NOTE_RADIUS, y - 8);
-      ctx.stroke();
-      ctx.setLineDash([]); // Reset line dash
-      
-      // Add duration text for very long notes
-      ctx.fillStyle = '#666666';
-      ctx.font = '8px Arial';
-      ctx.textAlign = 'center';
-      const durationText = `${Math.round(note.duration / 1000)}s`;
-      ctx.fillText(durationText, x + noteWidth / 2, y - 12);
-    }
   }
   
   function drawTie(x: number, y: number, noteWidth: number, tieType: string, color: string) {
     if (!ctx) return;
     
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2; // Slightly thicker for better visibility
     
-    const tieY = y + NOTE_RADIUS + 2; // Position tie below the note
+    const tieY = y + NOTE_RADIUS + 4; // Position tie below the note
+    const tieRadius = 10; // Slightly larger radius
     
     if (tieType === 'start') {
       // Draw tie extending to the right
       ctx.beginPath();
-      ctx.arc(x + noteWidth, tieY, 8, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.arc(x + noteWidth, tieY, tieRadius, Math.PI * 0.15, Math.PI * 0.85);
       ctx.stroke();
+      
+      // Add small tie indicator text
+      ctx.fillStyle = '#4CAF50';
+      ctx.font = '8px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('tie→', x + noteWidth + tieRadius, tieY + 12);
     } else if (tieType === 'end') {
       // Draw tie extending from the left
       ctx.beginPath();
-      ctx.arc(x, tieY, 8, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.arc(x, tieY, tieRadius, Math.PI * 0.15, Math.PI * 0.85);
       ctx.stroke();
+      
+      // Add small tie indicator text
+      ctx.fillStyle = '#4CAF50';
+      ctx.font = '8px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('←end', x - tieRadius, tieY + 12);
     } else if (tieType === 'continue') {
       // Draw ties on both sides
       ctx.beginPath();
-      ctx.arc(x, tieY, 6, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.arc(x, tieY, tieRadius * 0.8, Math.PI * 0.15, Math.PI * 0.85);
       ctx.stroke();
       
       ctx.beginPath();
-      ctx.arc(x + noteWidth, tieY, 6, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.arc(x + noteWidth, tieY, tieRadius * 0.8, Math.PI * 0.15, Math.PI * 0.85);
       ctx.stroke();
+      
+      // Add small tie indicator text
+      ctx.fillStyle = '#4CAF50';
+      ctx.font = '8px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('←tie→', x + noteWidth / 2, tieY + 12);
     }
   }
 
@@ -341,10 +388,32 @@
     animate();
   }
   
+  function calculateStaffPosition(note: MusicalNote, clef: ClefType): number {
+    // Calculate staff position relative to the current clef
+    const midiNumber = note.midiNumber;
+    
+    // Reference MIDI numbers for middle line of each clef
+    const clefReferences = {
+      treble: 71,  // B4 (middle line of treble staff)
+      alto: 60,    // C4 (middle line of alto staff)  
+      bass: 50     // D3 (middle line of bass staff)
+    };
+    
+    const referenceMidi = clefReferences[clef];
+    
+    // Calculate position relative to middle line (0 = middle line)
+    // Positive = above middle line, negative = below
+    return (midiNumber - referenceMidi) / 2;  // Each staff line is 2 semitones
+  }
+
   function clearNotes() {
     audioStateActions.clearNotes();
     if (sustainedNoteHandler) {
       sustainedNoteHandler.reset();
+    }
+    if (registerDetector) {
+      registerDetector.reset();
+      currentClef = 'treble';
     }
   }
   

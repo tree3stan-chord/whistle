@@ -36,7 +36,7 @@ export class SustainedNoteHandler {
     this.config = {
       pitchTolerance: 25,  // Hz - within a quartertone  
       minSustainDuration: 500,  // 500ms = roughly 0.5 beats at 120 BPM
-      maxSingleNoteDuration: 4000,  // 4 seconds max for single note
+      maxSingleNoteDuration: 1500,  // 1.5 seconds max for single note before tying
       updateInterval: 100,  // Update every 100ms
       ...config
     };

@@ -24,7 +24,7 @@ export class ExportService {
    * Export canvas as PNG image
    */
   static async exportCanvasToPNG(canvas: HTMLCanvasElement, options: ExportOptions = {}): Promise<void> {
-    const { filename = 'whistle-transcription', quality = 1.0, format = 'png' } = options;
+    const { filename = 'cadenza-transcription', quality = 1.0, format = 'png' } = options;
     
     try {
       // Convert canvas to blob
@@ -62,7 +62,7 @@ export class ExportService {
   /**
    * Export transcription data as JSON
    */
-  static async exportToJSON(data: TranscriptionData, filename: string = 'whistle-transcription'): Promise<void> {
+  static async exportToJSON(data: TranscriptionData, filename: string = 'cadenza-transcription'): Promise<void> {
     try {
       const jsonData = JSON.stringify(data, null, 2);
       const blob = new Blob([jsonData], { type: 'application/json' });
@@ -88,7 +88,7 @@ export class ExportService {
   /**
    * Export as MIDI file (simplified implementation)
    */
-  static async exportToMIDI(notes: MusicalNote[], filename: string = 'whistle-transcription'): Promise<void> {
+  static async exportToMIDI(notes: MusicalNote[], filename: string = 'cadenza-transcription'): Promise<void> {
     try {
       // Create a simplified MIDI file
       const midi = this.createMIDIData(notes);
@@ -188,7 +188,7 @@ export class ExportService {
    */
   static saveToStorage(data: TranscriptionData, key: string): void {
     try {
-      localStorage.setItem(`whistle-${key}`, JSON.stringify(data));
+      localStorage.setItem(`cadenza-${key}`, JSON.stringify(data));
       console.log(`Saved transcription to storage: ${key}`);
     } catch (error) {
       console.error('Save to storage failed:', error);
@@ -201,7 +201,7 @@ export class ExportService {
    */
   static loadFromStorage(key: string): TranscriptionData | null {
     try {
-      const data = localStorage.getItem(`whistle-${key}`);
+      const data = localStorage.getItem(`cadenza-${key}`);
       if (data) {
         return JSON.parse(data);
       }
@@ -219,8 +219,8 @@ export class ExportService {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith('whistle-')) {
-        keys.push(key.replace('whistle-', ''));
+      if (key && key.startsWith('cadenza-')) {
+        keys.push(key.replace('cadenza-', ''));
       }
     }
     return keys.sort();
@@ -230,7 +230,7 @@ export class ExportService {
    * Delete saved transcription
    */
   static deleteFromStorage(key: string): void {
-    localStorage.removeItem(`whistle-${key}`);
+    localStorage.removeItem(`cadenza-${key}`);
     console.log(`Deleted transcription: ${key}`);
   }
 }

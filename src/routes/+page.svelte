@@ -76,13 +76,13 @@
 </script>
 
 <svelte:head>
-  <title>Whistle - Audio Test</title>
+  <title>Cadenza - Vocal Transcription</title>
 </svelte:head>
 
 <main class="container">
   <header>
-    <h1>🎵 Whistle - Vocal Transcription</h1>
-    <p>Sing melodies with lyrics and see them transcribed to musical notation</p>
+    <h1>🎼 Cadenza - Intelligent Vocal Transcription</h1>
+    <p>Advanced vocal analysis with automatic clef detection and sustained note recognition</p>
   </header>
 
   <section class="controls">
