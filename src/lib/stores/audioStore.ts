@@ -13,7 +13,10 @@ export const audioState = writable<AudioState>({
   currentFrequency: null,
   currentConfidence: 0,
   error: null,
-  deviceLabel: null
+  deviceLabel: null,
+  vocalIsolationEnabled: true,
+  vocalIsolationReady: false,
+  voiceActivity: 0
 });
 
 // Audio configuration
@@ -22,7 +25,8 @@ export const audioConfig = writable<AudioConfig>({
   sampleRate: 48000,
   bufferSize: 4096,
   minFrequency: 60,
-  maxFrequency: 2000
+  maxFrequency: 2000,
+  vocalIsolationEnabled: true
 });
 
 // Current pitch detection result
@@ -75,6 +79,18 @@ export const audioStateActions = {
     audioState.update(state => ({ ...state, deviceLabel }));
   },
   
+  setVocalIsolationEnabled(enabled: boolean) {
+    audioState.update(state => ({ ...state, vocalIsolationEnabled: enabled }));
+  },
+  
+  setVocalIsolationReady(ready: boolean) {
+    audioState.update(state => ({ ...state, vocalIsolationReady: ready }));
+  },
+  
+  setVoiceActivity(activity: number) {
+    audioState.update(state => ({ ...state, voiceActivity: activity }));
+  },
+  
   setPitchResult(result: PitchDetectionResult | null) {
     pitchResult.set(result);
     audioState.update(state => ({
@@ -120,7 +136,10 @@ export const audioStateActions = {
       currentFrequency: null,
       currentConfidence: 0,
       error: null,
-      deviceLabel: null
+      deviceLabel: null,
+      vocalIsolationEnabled: true,
+      vocalIsolationReady: false,
+      voiceActivity: 0
     });
     pitchResult.set(null);
     speechResult.set(null);

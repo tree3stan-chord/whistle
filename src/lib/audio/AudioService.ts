@@ -4,6 +4,7 @@
  */
 import { YinPitchDetector } from './YinPitchDetector.js';
 import { SpeechService } from './SpeechService.js';
+import { VocalIsolationProcessor } from './VocalIsolationProcessor.js';
 import { audioStateActions } from '../stores/audioStore.js';
 import type { AudioConfig, PitchDetectionResult } from './types.js';
 
@@ -15,6 +16,7 @@ export class AudioService {
   private gainNode: GainNode | null = null;
   private pitchDetector: YinPitchDetector | null = null;
   private speechService: SpeechService | null = null;
+  private vocalIsolation: VocalIsolationProcessor | null = null;
   
   private animationFrameId: number | null = null;
   private isAnalyzing = false;
@@ -24,7 +26,8 @@ export class AudioService {
     sampleRate: 48000,
     bufferSize: 4096,
     minFrequency: 60,
-    maxFrequency: 2000
+    maxFrequency: 2000,
+    vocalIsolationEnabled: true
   };
 
   constructor(config?: Partial<AudioConfig>) {
@@ -137,9 +140,29 @@ export class AudioService {
         }
       );
       
+      // Step 6: Initialize vocal isolation processor
+      this.vocalIsolation = new VocalIsolationProcessor(
+        this.audioContext.sampleRate,
+        this.config.bufferSize,
+        {
+          enabled: this.config.vocalIsolationEnabled,
+          vad: {
+            energyThreshold: 0.02,
+            minVoiceDuration: 100,
+            hangoverTime: 200
+          },
+          spectralSubtraction: {
+            alpha: 2.0,
+            beta: 0.05,
+            noiseUpdateRate: 0.05
+          }
+        }
+      );
+      
       // Update state
       audioStateActions.setInitialized(true);
       audioStateActions.setDeviceLabel(track.label);
+      audioStateActions.setVocalIsolationEnabled(this.config.vocalIsolationEnabled);
       
       console.log('AudioService initialized successfully!');
       
@@ -206,8 +229,19 @@ export class AudioService {
     const dataArray = new Float32Array(bufferLength);
     this.analyser.getFloatTimeDomainData(dataArray);
     
-    // Detect pitch
-    const pitchResult = this.pitchDetector.detectPitch(dataArray);
+    // Apply vocal isolation if enabled
+    let processedData = dataArray;
+    if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
+      const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
+      processedData = isolationResult.processedAudio;
+      
+      // Update vocal isolation state
+      audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
+      audioStateActions.setVoiceActivity(isolationResult.vadResult.confidence);
+    }
+    
+    // Detect pitch on processed audio
+    const pitchResult = this.pitchDetector.detectPitch(processedData);
     
     // Update state
     audioStateActions.setPitchResult(pitchResult);
@@ -257,8 +291,9 @@ export class AudioService {
       this.audioContext = null;
     }
     
-    // Reset pitch detector
+    // Reset pitch detector and vocal isolation
     this.pitchDetector = null;
+    this.vocalIsolation = null;
     
     // Update state
     audioStateActions.reset();
@@ -304,6 +339,12 @@ export class AudioService {
         maxFreq: newConfig.maxFrequency
       });
     }
+    
+    // Update vocal isolation if it exists
+    if (this.vocalIsolation && newConfig.vocalIsolationEnabled !== undefined) {
+      this.vocalIsolation.setEnabled(newConfig.vocalIsolationEnabled);
+      audioStateActions.setVocalIsolationEnabled(newConfig.vocalIsolationEnabled);
+    }
   }
 
   /**
@@ -311,5 +352,49 @@ export class AudioService {
    */
   getConfig(): AudioConfig {
     return { ...this.config };
+  }
+
+  /**
+   * Toggle vocal isolation on/off
+   */
+  setVocalIsolationEnabled(enabled: boolean): void {
+    this.config.vocalIsolationEnabled = enabled;
+    
+    if (this.vocalIsolation) {
+      this.vocalIsolation.setEnabled(enabled);
+    }
+    
+    audioStateActions.setVocalIsolationEnabled(enabled);
+    console.log(`Vocal isolation ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Reset vocal isolation noise profile (useful when environment changes)
+   */
+  resetVocalIsolationProfile(): void {
+    if (this.vocalIsolation) {
+      this.vocalIsolation.resetNoiseProfile();
+      audioStateActions.setVocalIsolationReady(false);
+      console.log('Vocal isolation noise profile reset');
+    }
+  }
+
+  /**
+   * Get vocal isolation statistics
+   */
+  getVocalIsolationStats(): {
+    enabled: boolean;
+    ready: boolean;
+    stats?: any;
+  } {
+    if (!this.vocalIsolation) {
+      return { enabled: false, ready: false };
+    }
+    
+    return {
+      enabled: this.config.vocalIsolationEnabled,
+      ready: this.vocalIsolation.isReady(),
+      stats: this.vocalIsolation.getStats()
+    };
   }
 }

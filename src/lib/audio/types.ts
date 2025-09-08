@@ -12,6 +12,7 @@ export interface AudioConfig {
   bufferSize: number;
   minFrequency: number;
   maxFrequency: number;
+  vocalIsolationEnabled: boolean;
 }
 
 export interface AudioState {
@@ -21,6 +22,9 @@ export interface AudioState {
   currentConfidence: number;
   error: string | null;
   deviceLabel: string | null;
+  vocalIsolationEnabled: boolean;
+  vocalIsolationReady: boolean;
+  voiceActivity: number;
 }
 
 export interface YinConfig {
