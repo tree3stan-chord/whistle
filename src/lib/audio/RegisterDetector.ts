@@ -69,11 +69,11 @@ export class RegisterDetector {
 
     // Analysis parameters
     this.recentNotes = [];              // Recent notes for analysis
-    this.analysisWindow = 5;            // Reduced window for faster clef detection
+    this.analysisWindow = 8;            // Larger window to require more evidence for clef changes
     this.clefChangeThreshold = 0.7;     // Confidence threshold for clef change
     this.currentClef = 'treble';         // Default clef
     this.lastClefChange = 0;            // Timestamp of last clef change
-    this.minClefChangeInterval = 1500;  // Reduced interval for faster clef changes (was 3000ms)
+    this.minClefChangeInterval = 3000;  // Require 3 seconds between clef changes to prevent erratic switching
 
     // Register statistics
     this.registerStats = {
@@ -111,15 +111,19 @@ export class RegisterDetector {
       this.recentNotes = this.recentNotes.slice(-this.analysisWindow);
     }
 
-    // Immediate bass clef trigger for notes below C4
-    if (midiNote < 60 && this.currentClef !== 'bass') { // C4 = MIDI 60
-      console.log(`Note ${note.noteName} (${midiNote}) is below C4, switching to bass clef immediately`);
-      return this.changeClef('bass');
+    // Only trigger bass clef for notes below A3 if we have sustained evidence
+    if (midiNote <= 57 && this.currentClef !== 'bass') { // A3 = MIDI 57
+      // Check if we have multiple recent notes in this low range
+      const recentLowNotes = this.recentNotes.filter(n => n.midi <= 57);
+      if (recentLowNotes.length >= 3) { // Require at least 3 low notes
+        console.log(`Multiple notes below A3 detected, switching to bass clef`);
+        return this.changeClef('bass');
+      }
     }
 
-    // Immediate treble clef trigger for notes at or above C4
-    if (midiNote >= 60 && this.currentClef !== 'treble') { // C4 = MIDI 60
-      console.log(`Note ${note.noteName} (${midiNote}) is at/above C4, switching to treble clef`);
+    // Switch back to treble for notes significantly above A3
+    if (midiNote >= 64 && this.currentClef !== 'treble') { // E4 = MIDI 64, higher threshold for switching back
+      console.log(`Note ${note.noteName} (${midiNote}) is above E4, switching back to treble clef`);
       return this.changeClef('treble');
     }
 
@@ -140,73 +144,25 @@ export class RegisterDetector {
   }
 
   private determineBestClef(): ClefType {
-    if (this.recentNotes.length < 3) {
-      return this.currentClef; // Need more data
+    if (this.recentNotes.length < 5) {
+      return this.currentClef; // Need more data for confident clef change
     }
 
-    // Reset statistics
-    Object.keys(this.registerStats).forEach(clef => {
-      const stats = this.registerStats[clef as ClefType];
-      stats.count = 0;
-      stats.totalDistance = 0;
-      stats.avgDistance = 0;
-      stats.confidence = 0;
-    });
-
-    // Analyze each note against each clef
-    this.recentNotes.forEach(note => {
-      Object.keys(this.clefRanges).forEach(clefKey => {
-        const clef = clefKey as ClefType;
-        const range = this.clefRanges[clef];
-        const stats = this.registerStats[clef];
-
-        // Calculate distance from optimal center
-        const distance = Math.abs(note.midi - range.centerLine);
-        stats.totalDistance += distance;
-        stats.count++;
-
-        // Bonus points for being in optimal range
-        if (note.midi >= range.optimal.min && note.midi <= range.optimal.max) {
-          stats.count += 2; // Weight optimal range notes more heavily
-        }
-      });
-    });
-
-    // Calculate average distances and confidence scores
-    let bestClef: ClefType = this.currentClef;
-    let bestScore = -1;
-
-    Object.keys(this.registerStats).forEach(clefKey => {
-      const clef = clefKey as ClefType;
-      const stats = this.registerStats[clef];
-      if (stats.count > 0) {
-        stats.avgDistance = stats.totalDistance / stats.count;
-
-        // Calculate confidence (lower distance = higher confidence)
-        // Scale: 0-20 semitones distance → 1.0-0.0 confidence
-        stats.confidence = Math.max(0, 1.0 - (stats.avgDistance / 20));
-
-        // Bias toward current clef to avoid unnecessary changes
-        let score = stats.confidence;
-        if (clef === this.currentClef) {
-          score *= 1.2; // 20% bonus for current clef
-        }
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestClef = clef;
-        }
-      }
-    });
-
-    // Only change if confidence is significantly higher
-    const currentScore = this.registerStats[this.currentClef].confidence * 1.2;
-    const newScore = this.registerStats[bestClef].confidence;
-
-    if (bestClef !== this.currentClef && newScore > currentScore + 0.2) {
-      return bestClef;
+    // Count notes below A3 vs above A3
+    const notesBelow57 = this.recentNotes.filter(n => n.midi <= 57).length;
+    const notesAbove57 = this.recentNotes.filter(n => n.midi > 57).length;
+    
+    // Only suggest bass clef if majority of recent notes are below A3
+    if (notesBelow57 > notesAbove57 && notesBelow57 >= 4) {
+      return 'bass';
     }
-
+    
+    // Only suggest treble clef if majority are above A3
+    if (notesAbove57 > notesBelow57 && notesAbove57 >= 4) {
+      return 'treble';
+    }
+    
+    // If unclear, stick with current clef
     return this.currentClef;
   }
 
