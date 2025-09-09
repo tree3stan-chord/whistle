@@ -60,7 +60,7 @@ export class RegisterDetector {
         name: 'Alto Clef'
       },
       bass: {
-        optimal: { min: 36, max: 60 },     // C2 to C4 (optimal range)
+        optimal: { min: 36, max: 59 },     // C2 to B3 (optimal range - below C4)
         extended: { min: 24, max: 72 },    // C1 to C5 (playable range)
         centerLine: 50,                    // D3 (middle line of bass staff)
         name: 'Bass Clef'
@@ -111,15 +111,15 @@ export class RegisterDetector {
       this.recentNotes = this.recentNotes.slice(-this.analysisWindow);
     }
 
-    // Immediate bass clef trigger for male vocals (A3 and below)
-    if (midiNote <= 57 && this.currentClef !== 'bass') { // A3 = MIDI 57
-      console.log(`Note ${note.noteName} (${midiNote}) is below A3, switching to bass clef immediately`);
+    // Immediate bass clef trigger for notes below C4
+    if (midiNote < 60 && this.currentClef !== 'bass') { // C4 = MIDI 60
+      console.log(`Note ${note.noteName} (${midiNote}) is below C4, switching to bass clef immediately`);
       return this.changeClef('bass');
     }
 
-    // Immediate treble clef trigger for higher notes (above C5)
-    if (midiNote >= 72 && this.currentClef !== 'treble') { // C5 = MIDI 72
-      console.log(`Note ${note.noteName} (${midiNote}) is above C5, switching to treble clef`);
+    // Immediate treble clef trigger for notes at or above C4
+    if (midiNote >= 60 && this.currentClef !== 'treble') { // C4 = MIDI 60
+      console.log(`Note ${note.noteName} (${midiNote}) is at/above C4, switching to treble clef`);
       return this.changeClef('treble');
     }
 
