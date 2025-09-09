@@ -25,6 +25,8 @@
   let currentMeasure = 1;
   let notesInCurrentMeasure = 0;
   const NOTES_PER_MEASURE = 4; // 4/4 time signature
+  const MEASURES_PER_LINE = 4; // 4 measures per staff line
+  const STAFF_LINE_HEIGHT = 120; // Vertical space between staff systems
   
   // Staff rendering constants (base values, will be scaled)
   let STAFF_MARGIN = 50;
@@ -237,16 +239,43 @@
     const currentWidth = responsiveWidth || width;
     const currentHeight = responsiveHeight || height;
     
+    // Calculate how many staff lines we need based on measures
+    const totalMeasures = Math.max(currentMeasure, 1);
+    const linesNeeded = Math.ceil(totalMeasures / MEASURES_PER_LINE);
+    
+    // Adjust canvas height dynamically for multiple lines
+    const neededHeight = Math.max(currentHeight, 150 + (linesNeeded - 1) * STAFF_LINE_HEIGHT);
+    if (canvas && canvas.height < neededHeight) {
+      canvas.height = neededHeight;
+    }
+    
     // Clear canvas
-    ctx.clearRect(0, 0, currentWidth, currentHeight);
+    ctx.clearRect(0, 0, currentWidth, neededHeight);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, currentWidth, currentHeight);
+    ctx.fillRect(0, 0, currentWidth, neededHeight);
+    
+    // Draw all staff systems (lines)
+    for (let line = 0; line < linesNeeded; line++) {
+      drawStaffSystem(line, currentWidth, neededHeight);
+    }
+    
+    // Draw measure information
+    drawMeasureInfo(currentWidth, 150);
+    
+    // Draw all notes across multiple lines
+    drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
+  }
+  
+  function drawStaffSystem(lineIndex: number, currentWidth: number, totalHeight: number) {
+    if (!ctx) return;
+    
+    // Calculate Y position for this staff system
+    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
     
     // Draw staff lines
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = Math.max(1, currentHeight / 200); // Scale line width
+    ctx.lineWidth = Math.max(1, totalHeight / 200);
     
-    const staffY = currentHeight / 2;
     const staffStart = STAFF_MARGIN;
     const staffEnd = currentWidth - STAFF_MARGIN;
     
@@ -259,15 +288,29 @@
       ctx.stroke();
     }
     
-    // Draw clef symbol based on current clef
-    drawClefSymbol(staffStart + 10, staffY);
+    // Determine which clef to use for this line
+    const firstMeasureOnLine = (lineIndex * MEASURES_PER_LINE) + 1;
+    let clefForLine = currentClef;
     
-    // Draw measure information
-    drawMeasureInfo(currentWidth, staffY);
+    // Check if there are any clef changes that apply to this line
+    for (let measure = firstMeasureOnLine; measure < firstMeasureOnLine + MEASURES_PER_LINE; measure++) {
+      if (measuredClefChanges.has(measure)) {
+        clefForLine = measuredClefChanges.get(measure)!;
+        break;
+      }
+    }
+    
+    // Draw clef symbol for this line
+    drawClefSymbol(staffStart + 10, staffY, clefForLine);
+    
+    // Draw measure bars
+    drawMeasureBars(lineIndex, staffY, staffStart, staffEnd);
   }
-  
-  function drawClefSymbol(x: number, staffY: number) {
+
+  function drawClefSymbol(x: number, staffY: number, clef?: ClefType) {
     if (!ctx) return;
+    
+    const clefToUse = clef || currentClef;
     
     ctx.font = `${CLEF_FONT_SIZE}px serif`;
     ctx.fillStyle = '#000000';
@@ -276,7 +319,7 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    switch (currentClef) {
+    switch (clefToUse) {
       case 'treble':
         // Treble clef centers on G line (2nd line from bottom, -LINE_SPACING from center)
         ctx.fillText('𝄞', x, staffY - LINE_SPACING);
@@ -294,6 +337,91 @@
     // Reset text alignment
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
+  }
+
+  function drawMeasureBars(lineIndex: number, staffY: number, staffStart: number, staffEnd: number) {
+    if (!ctx) return;
+    
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    
+    const availableWidth = staffEnd - staffStart - (CLEF_FONT_SIZE * 1.5);
+    const measureWidth = availableWidth / MEASURES_PER_LINE;
+    
+    // Draw measure bars (vertical lines)
+    for (let i = 0; i <= MEASURES_PER_LINE; i++) {
+      const x = staffStart + (CLEF_FONT_SIZE * 1.5) + (i * measureWidth);
+      ctx.beginPath();
+      ctx.moveTo(x, staffY - (LINE_SPACING * 2));
+      ctx.lineTo(x, staffY + (LINE_SPACING * 2));
+      ctx.stroke();
+    }
+  }
+
+  function drawNotesMultiline(currentWidth: number, totalHeight: number, linesNeeded: number) {
+    if (!ctx || $notes.length === 0) return;
+    
+    // Group notes by measure for proper line placement
+    const notesByMeasure = new Map<number, any[]>();
+    let measureNum = 1;
+    let noteCount = 0;
+    
+    $notes.forEach((note, index) => {
+      if (!notesByMeasure.has(measureNum)) {
+        notesByMeasure.set(measureNum, []);
+      }
+      notesByMeasure.get(measureNum)!.push({ note, index });
+      
+      noteCount++;
+      if (noteCount >= NOTES_PER_MEASURE) {
+        measureNum++;
+        noteCount = 0;
+      }
+    });
+    
+    // Draw notes on appropriate staff lines
+    notesByMeasure.forEach((notesInMeasure, measure) => {
+      const lineIndex = Math.floor((measure - 1) / MEASURES_PER_LINE);
+      const measureInLine = ((measure - 1) % MEASURES_PER_LINE);
+      
+      if (lineIndex < linesNeeded) {
+        drawMeasureNotes(notesInMeasure, lineIndex, measureInLine, currentWidth);
+      }
+    });
+  }
+
+  function drawMeasureNotes(notesInMeasure: any[], lineIndex: number, measureInLine: number, currentWidth: number) {
+    if (!ctx) return;
+    
+    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
+    const staffStart = STAFF_MARGIN + (CLEF_FONT_SIZE * 1.5);
+    const staffEnd = currentWidth - STAFF_MARGIN;
+    const availableWidth = staffEnd - staffStart;
+    const measureWidth = availableWidth / MEASURES_PER_LINE;
+    const measureStart = staffStart + (measureInLine * measureWidth);
+    
+    // Draw notes within this measure
+    let positionInMeasure = 0;
+    const noteSpacing = measureWidth / Math.max(notesInMeasure.length, NOTES_PER_MEASURE);
+    
+    notesInMeasure.forEach(({ note, index }, noteIndex) => {
+      const x = measureStart + (noteIndex * noteSpacing) + (noteSpacing / 2);
+      const y = staffY - (note.staffPosition * LINE_SPACING / 2);
+      
+      // Calculate width based on note duration
+      const noteWidth = Math.min(calculateNoteWidth(note), noteSpacing * 0.8);
+      
+      // Draw note symbol
+      drawNoteSymbol(x, y, note, noteWidth);
+      
+      // Draw note name below staff (scaled for multiline)
+      const noteFontSize = Math.max(8, CLEF_FONT_SIZE * 0.25);
+      ctx.font = `${noteFontSize}px sans-serif`;
+      ctx.fillStyle = '#666666';
+      ctx.textAlign = 'center';
+      const textY = staffY + (LINE_SPACING * 2.5);
+      ctx.fillText(note.noteName, x, textY);
+    });
   }
 
   function drawMeasureInfo(currentWidth: number, staffY: number) {
@@ -319,70 +447,6 @@
     ctx.textAlign = 'center'; // Reset alignment
   }
 
-  function drawNotes() {
-    if (!ctx) return;
-    
-    const currentHeight = responsiveHeight || height;
-    const staffY = currentHeight / 2;
-    const staffStart = STAFF_MARGIN + (CLEF_FONT_SIZE * 1.5); // After clef, scaled
-    
-    // Calculate positions based on note durations, not just index
-    let cumulativeWidth = 0;
-    $notes.forEach((note, index) => {
-      const x = staffStart + cumulativeWidth;
-      const y = staffY - (note.staffPosition * LINE_SPACING / 2);
-      
-      // Calculate width based on note duration
-      const noteWidth = calculateNoteWidth(note);
-      
-      // Draw note based on duration
-      drawNoteSymbol(x, y, note, noteWidth);
-      
-      // Draw enhanced duration display for sustained notes
-      if (note.duration) {
-        ctx.fillStyle = note.duration > 1000 ? '#2196F3' : '#888888'; // Blue for sustained notes
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'center';
-        
-        // Show duration in more readable format
-        const durationSeconds = note.duration / 1000;
-        const durationText = durationSeconds >= 1 ? 
-          `${durationSeconds.toFixed(1)}s` : 
-          `${Math.round(note.duration)}ms`;
-        
-        const durationFontSize = Math.max(8, CLEF_FONT_SIZE * 0.25);
-        ctx.font = `${durationFontSize}px Arial`;
-        ctx.fillText(durationText, x, staffY + LINE_SPACING * 4);
-        
-        // Show note value with sustaining indicator
-        if (note.noteValue) {
-          const sustainIndicator = note.duration > 1000 ? ' 🎵' : '';
-          ctx.fillText(note.noteValue + sustainIndicator, x, staffY + LINE_SPACING * 5);
-        }
-        
-        // Add visual sustaining indicator for notes being extended
-        if (note.duration > 800 && !((note as any).tied)) {
-          ctx.fillStyle = '#4CAF50';
-          const sustainFontSize = Math.max(6, CLEF_FONT_SIZE * 0.19);
-          ctx.font = `${sustainFontSize}px Arial`;
-          ctx.fillText('sustaining...', x, y - NOTE_RADIUS - 8);
-        }
-      }
-      
-      // Draw ledger lines if needed
-      drawLedgerLines(x, y, note.staffPosition);
-      
-      // Draw note name below staff
-      const noteFontSize = Math.max(10, CLEF_FONT_SIZE * 0.31);
-      ctx.font = `${noteFontSize}px sans-serif`;
-      ctx.fillStyle = '#666666';
-      const textWidth = ctx.measureText(note.noteName).width;
-      ctx.fillText(note.noteName, x - textWidth/2, currentHeight - (STAFF_MARGIN * 0.4));
-      
-      // Update cumulative width for next note
-      cumulativeWidth += noteWidth + NOTE_SPACING;
-    });
-  }
   
   function calculateNoteWidth(note: MusicalNote): number {
     // Calculate visual width based on note duration
