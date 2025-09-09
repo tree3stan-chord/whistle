@@ -95,7 +95,7 @@ export class SustainedNoteHandler {
     const optimisticNote = {
       ...note,
       duration: optimisticDuration,
-      noteValue: this.durationToNoteValue(optimisticDuration)
+      noteValue: this.calculateNoteValue(optimisticDuration)
     };
 
     // Update the note immediately with optimistic duration
