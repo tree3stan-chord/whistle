@@ -51,23 +51,55 @@ export class SustainedNoteHandler {
   processNote(newNote: MusicalNote, noteIndex: number): boolean {
     const currentTime = Date.now();
 
-    // Check if this note should extend the current sustained note
-    if (this.activeSustainedNote && this.shouldExtendSustainedNote(newNote, currentTime)) {
+    // Check if this note should extend the current sustained note (same pitch)
+    if (this.activeSustainedNote && this.isSamePitch(newNote, this.activeSustainedNote.originalNote)) {
       this.extendSustainedNote(newNote, currentTime);
       return false; // Don't add this as a separate note
     } else {
-      // Finalize any existing sustained note
+      // Finalize any existing sustained note (pitch changed)
       if (this.activeSustainedNote) {
         this.finalizeSustainedNote(currentTime);
       }
 
-      // Start a new sustained note if this note has potential
-      if (this.shouldStartSustaining(newNote)) {
-        this.startSustaining(newNote, noteIndex, currentTime);
-      }
+      // OPTIMISTIC: Always start sustaining every new note (assume it will be longer)
+      this.startOptimisticNote(newNote, noteIndex, currentTime);
       
       return true; // Add this note normally
     }
+  }
+
+  /**
+   * Check if two notes are the same pitch (within tolerance)
+   */
+  private isSamePitch(note1: MusicalNote, note2: MusicalNote): boolean {
+    return Math.abs(note1.frequency - note2.frequency) <= this.config.pitchTolerance;
+  }
+
+  /**
+   * Start optimistic sustaining for any new note (assume it will be longer)
+   */
+  private startOptimisticNote(note: MusicalNote, noteIndex: number, currentTime: number): void {
+    console.log(`Starting optimistic sustain for ${note.noteName}`);
+    
+    this.activeSustainedNote = {
+      originalNote: note,
+      startTime: currentTime,
+      lastUpdateTime: currentTime,
+      currentDuration: note.duration || 0,
+      noteIndex,
+      tiedNotes: []
+    };
+
+    // Set an initial optimistic duration - start with half note (longer assumption)
+    const optimisticDuration = 1000; // 1000ms = half note at moderate tempo (more optimistic)
+    const optimisticNote = {
+      ...note,
+      duration: optimisticDuration,
+      noteValue: this.durationToNoteValue(optimisticDuration)
+    };
+
+    // Update the note immediately with optimistic duration
+    this.onNoteUpdate(noteIndex, optimisticNote);
   }
 
   /**
@@ -78,13 +110,9 @@ export class SustainedNoteHandler {
 
     const timeSinceLastUpdate = currentTime - this.activeSustainedNote.lastUpdateTime;
     
-    // Don't extend if too much time has passed (silence gap)
-    if (timeSinceLastUpdate > 300) return false;
-
-    // Check if pitch is within tolerance
-    const pitchDifference = Math.abs(newNote.frequency - this.activeSustainedNote.originalNote.frequency);
-    
-    return pitchDifference <= this.config.pitchTolerance;
+    // With optimistic approach, we're more lenient about extending
+    // Don't extend if too much time has passed (silence gap) - but be more generous
+    return timeSinceLastUpdate <= 500; // More lenient timing for optimistic approach
   }
 
   /**
