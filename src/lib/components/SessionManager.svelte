@@ -139,7 +139,11 @@
       <span class="staff-count">{notes.length}</span>
     </div>
     <button 
-      on:click={() => audioStateActions.clearNotes()} 
+      on:click={() => {
+        // Dispatch custom event to clear staff and measures
+        const event = new CustomEvent('clearStaff');
+        document.dispatchEvent(event);
+      }} 
       class="session-btn clear-btn" 
       disabled={notes.length === 0}
     >

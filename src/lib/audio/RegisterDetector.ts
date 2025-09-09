@@ -69,11 +69,11 @@ export class RegisterDetector {
 
     // Analysis parameters
     this.recentNotes = [];              // Recent notes for analysis
-    this.analysisWindow = 10;           // Number of recent notes to analyze
+    this.analysisWindow = 5;            // Reduced window for faster clef detection
     this.clefChangeThreshold = 0.7;     // Confidence threshold for clef change
     this.currentClef = 'treble';        // Default clef
     this.lastClefChange = 0;            // Timestamp of last clef change
-    this.minClefChangeInterval = 3000;  // Minimum time between clef changes (ms)
+    this.minClefChangeInterval = 1500;  // Reduced interval for faster clef changes (was 3000ms)
 
     // Register statistics
     this.registerStats = {
@@ -111,12 +111,24 @@ export class RegisterDetector {
       this.recentNotes = this.recentNotes.slice(-this.analysisWindow);
     }
 
-    // Don't change clef too frequently
+    // Immediate bass clef trigger for male vocals (A3 and below)
+    if (midiNote <= 57 && this.currentClef !== 'bass') { // A3 = MIDI 57
+      console.log(`Note ${note.noteName} (${midiNote}) is below A3, switching to bass clef immediately`);
+      return this.changeClef('bass');
+    }
+
+    // Immediate treble clef trigger for higher notes (above C5)
+    if (midiNote >= 72 && this.currentClef !== 'treble') { // C5 = MIDI 72
+      console.log(`Note ${note.noteName} (${midiNote}) is above C5, switching to treble clef`);
+      return this.changeClef('treble');
+    }
+
+    // Don't change clef too frequently for gradual changes
     if (Date.now() - this.lastClefChange < this.minClefChangeInterval) {
       return this.currentClef;
     }
 
-    // Analyze if we should change clef
+    // Analyze if we should change clef gradually
     const bestClef = this.determineBestClef();
 
     if (bestClef !== this.currentClef) {
