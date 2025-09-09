@@ -53,7 +53,7 @@
     LINE_SPACING = Math.max(12 * scaleFactor, 8);
     NOTE_RADIUS = Math.max(4 * scaleFactor, 3);
     NOTE_SPACING = Math.max(20 * scaleFactor, 15);
-    CLEF_FONT_SIZE = Math.max(32 * scaleFactor, 24);
+    CLEF_FONT_SIZE = Math.max(64 * scaleFactor, 48); // Much bigger clef symbols
   }
 
   onMount(() => {
@@ -272,17 +272,28 @@
     ctx.font = `${CLEF_FONT_SIZE}px serif`;
     ctx.fillStyle = '#000000';
     
+    // Set text alignment for better centering with larger clefs
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
     switch (currentClef) {
       case 'treble':
-        ctx.fillText('𝄞', x, staffY + 5);
+        // Treble clef centers on G line (2nd line from bottom, -LINE_SPACING from center)
+        ctx.fillText('𝄞', x, staffY - LINE_SPACING);
         break;
       case 'bass':
-        ctx.fillText('𝄢', x, staffY - 5);
+        // Bass clef centers on F line (4th line from bottom, +LINE_SPACING from center)
+        ctx.fillText('𝄢', x, staffY + LINE_SPACING);
         break;
       case 'alto':
+        // Alto clef centers exactly on middle line
         ctx.fillText('𝄡', x, staffY);
         break;
     }
+    
+    // Reset text alignment
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
   }
 
   function drawMeasureInfo(currentWidth: number, staffY: number) {
