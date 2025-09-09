@@ -20,7 +20,7 @@
   let animationId: number;
   let sustainedNoteHandler: SustainedNoteHandler;
   let registerDetector: RegisterDetector;
-  let currentClef: ClefType = 'treble';
+  let currentClef: ClefType = 'bass';
   let measuredClefChanges: Map<number, ClefType> = new Map(); // Track clef changes by measure
   let currentMeasure = 1;
   let notesInCurrentMeasure = 0;
@@ -119,10 +119,14 @@
   });
   
   // React to pitch changes with sustained note handling
-  $: if ($pitchResult && $pitchResult.confidence > 0.7 && sustainedNoteHandler) {
+  $: if ($pitchResult && $pitchResult.confidence > 0.3 && sustainedNoteHandler) {
+    console.log(`Pitch detected: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
     const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
+    console.log(`Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber})`);
     if (NoteConverter.isVocalRange(rawNote.frequency)) {
       processRawNote(rawNote);
+    } else {
+      console.log(`Frequency ${rawNote.frequency.toFixed(1)}Hz outside vocal range (80-1200Hz)`);
     }
   }
   
@@ -210,8 +214,8 @@
     notesInCurrentMeasure = 0;
     measuredClefChanges.clear();
     
-    // Reset clef to default
-    currentClef = 'treble';
+    // Reset clef to default (bass for male vocal testing)
+    currentClef = 'bass';
     
     // Reset register detector
     if (registerDetector) {

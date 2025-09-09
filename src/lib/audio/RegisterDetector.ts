@@ -71,7 +71,7 @@ export class RegisterDetector {
     this.recentNotes = [];              // Recent notes for analysis
     this.analysisWindow = 5;            // Reduced window for faster clef detection
     this.clefChangeThreshold = 0.7;     // Confidence threshold for clef change
-    this.currentClef = 'treble';        // Default clef
+    this.currentClef = 'bass';           // Default to bass clef for male vocal testing
     this.lastClefChange = 0;            // Timestamp of last clef change
     this.minClefChangeInterval = 1500;  // Reduced interval for faster clef changes (was 3000ms)
 
@@ -302,8 +302,8 @@ export class RegisterDetector {
   // Reset the detector (useful when clearing notation)
   reset(): void {
     this.recentNotes = [];
-    this.currentClef = 'treble';
+    this.currentClef = 'bass';
     this.lastClefChange = 0;
-    console.log('RegisterDetector reset to default state');
+    console.log('RegisterDetector reset to default state (bass clef)');
   }
 }
