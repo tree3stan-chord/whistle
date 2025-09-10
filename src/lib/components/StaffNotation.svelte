@@ -128,10 +128,12 @@
   });
   
   // React to pitch changes with sustained note handling
-  $: if ($pitchResult) {
-    console.log(`Pitch result: freq=${$pitchResult.frequency?.toFixed(1) || 'null'}Hz, conf=${$pitchResult.confidence?.toFixed(3) || 'null'}, handler=${!!sustainedNoteHandler}`);
+  $: {
+    if (Math.random() < 0.01) {
+      console.log(`StaffNotation: pitchResult=${!!$pitchResult}, freq=${$pitchResult?.frequency || 'null'}, conf=${$pitchResult?.confidence || 'null'}, handler=${!!sustainedNoteHandler}`);
+    }
     
-    if ($pitchResult.confidence > 0.5 && sustainedNoteHandler) {
+    if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.5 && sustainedNoteHandler) {
       console.log(`Processing pitch: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
       const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
       console.log(`Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber})`);
@@ -253,9 +255,10 @@
     const currentWidth = responsiveWidth || width;
     const currentHeight = responsiveHeight || height;
     
-    // Calculate how many staff lines we need based on measures
-    const totalMeasures = Math.max(currentMeasure, 1);
-    const linesNeeded = Math.ceil(totalMeasures / MEASURES_PER_LINE);
+    // Calculate how many staff lines we need based on measures WITH NOTES
+    // Only create new staff lines when we actually have notes that need them
+    const measuresWithNotes = Math.max(Object.keys(notesByMeasure).length, 1);
+    const linesNeeded = Math.ceil(measuresWithNotes / MEASURES_PER_LINE);
     
     // Adjust canvas height dynamically for multiple lines
     const neededHeight = Math.max(currentHeight, 150 + (linesNeeded - 1) * STAFF_LINE_HEIGHT);
@@ -361,12 +364,13 @@
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     
-    const availableWidth = staffEnd - staffStart - (CLEF_FONT_SIZE * 1.5);
+    const clefSpacing = CLEF_FONT_SIZE * 2.5; // Increased spacing after clef
+    const availableWidth = staffEnd - staffStart - clefSpacing;
     const measureWidth = availableWidth / MEASURES_PER_LINE;
     
     // Draw measure bars (vertical lines)
     for (let i = 0; i <= MEASURES_PER_LINE; i++) {
-      const x = staffStart + (CLEF_FONT_SIZE * 1.5) + (i * measureWidth);
+      const x = staffStart + clefSpacing + (i * measureWidth);
       ctx.beginPath();
       ctx.moveTo(x, staffY - (LINE_SPACING * 2));
       ctx.lineTo(x, staffY + (LINE_SPACING * 2));
@@ -410,7 +414,8 @@
     if (!ctx) return;
     
     const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
-    const staffStart = STAFF_MARGIN + (CLEF_FONT_SIZE * 1.5);
+    const clefSpacing = CLEF_FONT_SIZE * 2.5; // Match the spacing from drawStaffLine
+    const staffStart = STAFF_MARGIN + clefSpacing;
     const staffEnd = currentWidth - STAFF_MARGIN;
     const availableWidth = staffEnd - staffStart;
     const measureWidth = availableWidth / MEASURES_PER_LINE;

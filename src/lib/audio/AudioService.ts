@@ -240,23 +240,29 @@ export class AudioService {
     const dataArray = new Float32Array(bufferLength);
     this.analyser.getFloatTimeDomainData(dataArray);
     
-    // Apply vocal isolation if enabled
+    // TEMPORARY: Disable vocal isolation to test pitch detection
     let processedData = dataArray;
-    if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
-      const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
-      processedData = isolationResult.processedAudio;
-      
-      // Update vocal isolation state
-      audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
-      audioStateActions.setVoiceActivity(isolationResult.vadResult.confidence);
-    }
+    // if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
+    //   const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
+    //   processedData = isolationResult.processedAudio;
+    //   
+    //   // Update vocal isolation state
+    //   audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
+    //   audioStateActions.setVoiceActivity(isolationResult.vadResult.confidence);
+    // }
     
     // Detect pitch on processed audio
     const pitchResult = this.pitchDetector.detectPitch(processedData);
     
-    // Debug: Log pitch results periodically
-    if (Math.random() < 0.01) { // Log ~1% of results to avoid spam
-      console.log(`AudioService pitch: freq=${pitchResult.frequency?.toFixed(1) || 'null'}Hz, conf=${pitchResult.confidence?.toFixed(3) || 'null'}`);
+    // Debug: Log pitch results to understand what's happening
+    if (pitchResult === null || pitchResult === undefined) {
+      if (Math.random() < 0.01) {
+        console.log(`AudioService: pitchResult is ${pitchResult}`);
+      }
+    } else {
+      if (Math.random() < 0.01) {
+        console.log(`AudioService pitch: freq=${pitchResult.frequency?.toFixed(1) || 'null'}Hz, conf=${pitchResult.confidence?.toFixed(3) || 'null'}`);
+      }
     }
     
     // Update state
