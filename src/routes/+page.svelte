@@ -31,14 +31,7 @@
     // Initialize modal positions
     const defaultPositions = getDefaultModalPositions();
     
-    // Register all modals with their configurations first
-    modalActions.registerModal({
-      id: 'recording-control',
-      title: 'Recording Control',
-      initialPosition: defaultPositions['recording-control'],
-      minimizable: true,
-      persistent: true
-    });
+    // Remove duplicate registration - let DraggableModal components self-register
     
     modalActions.registerModal({
       id: 'status-monitor',
@@ -64,14 +57,15 @@
       persistent: true
     });
     
-    // Set default modal visibility AFTER registration - only Recording Control and Session Manager visible
+    // Let modals use their default visibility from registration
+    // Recording control and session manager should be visible by default
     setTimeout(() => {
-      modalActions.setVisible('recording-control', true);   // Essential - keep visible
-      modalActions.setVisible('session-manager', true);     // Essential - keep visible  
+      console.log('Setting non-default modal visibility...');
       modalActions.setVisible('status-monitor', false);     // Hide by default
       modalActions.setVisible('lyrics-panel', false);       // Hide by default
       modalActions.setVisible('tempo-control', false);      // Hide by default
-    }, 100); // Small delay to ensure registration is complete
+      console.log('Modal visibility set complete');
+    }, 200);
   });
 
   onDestroy(async () => {
@@ -191,6 +185,7 @@
   </div>
 
   <!-- Recording Control Modal -->
+  {#if mounted}
   <DraggableModal config={{
     id: 'recording-control',
     title: 'Recording Control',
@@ -235,6 +230,7 @@
       {/if}
     </div>
   </DraggableModal>
+  {/if}
 
   <!-- Status Monitor Modal -->
   <DraggableModal config={{

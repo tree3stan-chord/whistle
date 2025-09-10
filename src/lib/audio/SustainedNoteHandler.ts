@@ -43,12 +43,12 @@ export class SustainedNoteHandler {
     // Initialize config with tempo-aware defaults
     const beatDuration = tempoManager.getBeatDuration();
     this.config = {
-      pitchTolerance: 15,  // Hz - reasonable tolerance for vocal pitch stability
+      pitchTolerance: 50,  // Hz - much more forgiving for human pitch variations
       minSustainDuration: 150,  // 150ms minimum - shorter for responsive transcription
       maxSingleNoteDuration: beatDuration * 4,  // 4 beats max before tying (whole note)
       updateInterval: 50,  // Update every 50ms for smoother response
-      silenceThreshold: 200,  // 200ms silence to end a note
-      confidenceThreshold: 0.7,  // Higher confidence threshold for cleaner transcription
+      silenceThreshold: 400,  // 400ms silence to end a note (very forgiving)
+      confidenceThreshold: 0.5,  // Even lower confidence threshold
       ...config
     };
 
@@ -65,19 +65,24 @@ export class SustainedNoteHandler {
 
     // Filter out low confidence notes early to prevent octave jumping
     if (newNote.confidence < this.config.confidenceThreshold) {
+      console.log(`🚫 Rejecting low confidence note: ${newNote.noteName} (${newNote.confidence.toFixed(3)} < ${this.config.confidenceThreshold})`);
       // Check if we have an active note that needs finalization due to silence
       this.checkForSilenceEnd(currentTime);
       return false; // Don't add low confidence notes
     }
 
+    console.log(`🎤 Processing note: ${newNote.noteName} (MIDI: ${newNote.midiNumber}, ${newNote.frequency.toFixed(1)}Hz, conf: ${newNote.confidence.toFixed(3)})`);
+
     // Check if this extends the current sustained note
     if (this.activeSustainedNote && this.isSamePitch(newNote, this.activeSustainedNote.originalNote)) {
+      console.log(`🔄 Extending sustained note: ${this.activeSustainedNote.originalNote.noteName}`);
       // Extend the current note
       this.extendSustainedNote(newNote, currentTime);
       return false; // Don't add as separate note
     } else {
       // This is a different pitch - finalize current note and start new one
       if (this.activeSustainedNote) {
+        console.log(`🔚 Finalizing previous note: ${this.activeSustainedNote.originalNote.noteName}`);
         this.finalizeSustainedNote(currentTime);
       }
       
@@ -99,12 +104,13 @@ export class SustainedNoteHandler {
     const freqDiff = Math.abs(note1.frequency - note2.frequency);
     const freqSame = freqDiff <= this.config.pitchTolerance;
     
-    // Both MIDI and frequency must match for stability
-    const isSame = midiSame && freqSame;
+    // For sustaining, we should be more forgiving - use MIDI OR frequency match
+    // This helps when pitch detection varies slightly but is essentially the same note
+    const isSame = midiSame || freqSame;
     
     // Debug: Log pitch comparisons occasionally
-    if (Math.random() < 0.05) {
-      console.log(`🎯 Pitch compare: ${note1.noteName}(MIDI:${note1.midiNumber}, ${note1.frequency.toFixed(1)}Hz) vs ${note2.noteName}(MIDI:${note2.midiNumber}, ${note2.frequency.toFixed(1)}Hz) = same=${isSame} (midi=${midiSame}, freq=${freqSame})`);
+    if (Math.random() < 0.02) {
+      console.log(`🎯 ${note1.noteName} vs ${note2.noteName} = same=${isSame} (freqDiff=${freqDiff.toFixed(1)}Hz)`);
     }
     
     return isSame;
@@ -127,7 +133,7 @@ export class SustainedNoteHandler {
    * Start sustaining a new note with proper initial duration
    */
   private startSustaining(note: MusicalNote, noteIndex: number, currentTime: number): void {
-    console.log(`🎵 Starting sustain for ${note.noteName} (MIDI: ${note.midiNumber})`);
+    console.log(`🎵 Starting sustain for ${note.noteName} (MIDI: ${note.midiNumber}) at ${note.frequency.toFixed(1)}Hz`);
     
     this.activeSustainedNote = {
       originalNote: { ...note },
@@ -139,11 +145,11 @@ export class SustainedNoteHandler {
     };
 
     // Start with a short initial duration that will extend as the note continues
-    const initialDuration = this.config.updateInterval;
+    const initialDuration = this.config.updateInterval * 2; // Slightly longer initial duration
     const initialNote = {
       ...note,
       duration: initialDuration,
-      noteValue: 'eighth', // Start conservatively with eighth note
+      noteValue: this.calculateNoteValue(initialDuration), // Use tempo-aware calculation
       timestamp: currentTime
     };
 
@@ -172,21 +178,6 @@ export class SustainedNoteHandler {
     return note.confidence > 0.6;
   }
 
-  /**
-   * Start sustaining a new note
-   */
-  private startSustaining(note: MusicalNote, noteIndex: number, currentTime: number): void {
-    this.activeSustainedNote = {
-      originalNote: { ...note },
-      startTime: currentTime,
-      lastUpdateTime: currentTime,
-      currentDuration: 0,
-      noteIndex,
-      tiedNotes: []
-    };
-
-    console.log(`Starting to sustain note: ${note.noteName} at ${note.frequency}Hz`);
-  }
 
   /**
    * Extend the current sustained note
@@ -229,9 +220,11 @@ export class SustainedNoteHandler {
       this.onNoteUpdate(this.activeSustainedNote.noteIndex, updatedNote);
     }
 
-    // Debug occasionally
-    if (Math.random() < 0.02) {
-      console.log(`🎼 Extended ${updatedNote.noteName} to ${totalDuration}ms (${updatedNote.noteValue}), freq: ${smoothedFrequency.toFixed(1)}Hz`);
+    // Debug occasionally - show duration calculations
+    if (Math.random() < 0.05) {
+      const beatDuration = this.tempoManager.getBeatDuration();
+      const ratio = totalDuration / beatDuration;
+      console.log(`🎼 Extended ${updatedNote.noteName} to ${totalDuration}ms (${updatedNote.noteValue}) - ratio: ${ratio.toFixed(2)} beats`);
     }
   }
 

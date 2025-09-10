@@ -72,11 +72,11 @@ export class TempoManager {
     const beatDuration = this.getBeatDuration();
     const ratio = durationMs / beatDuration;
 
-    // Quantization thresholds with some tolerance
-    if (ratio >= 3.5) return 'whole';
-    if (ratio >= 1.5) return 'half';
-    if (ratio >= 0.75) return 'quarter';
-    if (ratio >= 0.375) return 'eighth';
+    // More sensible quantization thresholds for vocal performance
+    if (ratio >= 3.0) return 'whole';    // 3+ beats = whole note
+    if (ratio >= 1.25) return 'half';    // 1.25+ beats = half note (more accessible)
+    if (ratio >= 0.6) return 'quarter';  // 0.6+ beats = quarter note 
+    if (ratio >= 0.3) return 'eighth';   // 0.3+ beats = eighth note
     return 'sixteenth';
   }
 

@@ -129,10 +129,10 @@
       // Pass tempo manager for tempo-aware durations
       tempoManager,
       {
-        pitchTolerance: 15,        // Hz - tighter tolerance for better accuracy
+        pitchTolerance: 50,        // Hz - much more forgiving tolerance
         updateInterval: 50,        // Update every 50ms for smoother response
-        silenceThreshold: 200,     // 200ms silence to end notes
-        confidenceThreshold: 0.75, // Higher confidence for cleaner transcription
+        silenceThreshold: 400,     // 400ms silence to end notes (very forgiving)
+        confidenceThreshold: 0.5,  // Lower confidence for better sustaining
         minSustainDuration: 100    // Minimum 100ms for responsive transcription
       }
     );
@@ -195,8 +195,8 @@
       // Update playhead based on current active note
       updatePlayhead();
       
-      // Process new pitch data if available
-      if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.75) {
+      // Process new pitch data if available - lower threshold for better sustaining
+      if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.5) {
         const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
         
         if (NoteConverter.isVocalRange(rawNote.frequency)) {
@@ -862,6 +862,7 @@
     overflow: hidden;
     padding: 0;
     background: #f8f9fa; /* Light gray background */
+    z-index: 1; /* Keep staff below modals (which have z-index: 1000) */
   }
   
   .staff-canvas {
