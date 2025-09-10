@@ -9,9 +9,11 @@ import { TempoManager } from './TempoManager.js';
 
 interface SustainedNoteConfig {
   pitchTolerance: number;  // Hz - how close pitches need to be to be considered "same"
-  minSustainDuration: number;  // ms - minimum duration to consider sustaining (0.5 beats ~ 500ms)
+  minSustainDuration: number;  // ms - minimum duration to consider sustaining
   maxSingleNoteDuration: number;  // ms - max duration for a single note before we tie
   updateInterval: number;  // ms - how often to check for extensions
+  silenceThreshold: number;  // ms - how long silence before ending a note
+  confidenceThreshold: number;  // minimum confidence to process a note
 }
 
 interface ActiveSustainedNote {
@@ -41,10 +43,12 @@ export class SustainedNoteHandler {
     // Initialize config with tempo-aware defaults
     const beatDuration = tempoManager.getBeatDuration();
     this.config = {
-      pitchTolerance: 8,  // Hz - much tighter tolerance (roughly 1/4 semitone)  
-      minSustainDuration: beatDuration * 0.5,  // 0.5 beats minimum
+      pitchTolerance: 15,  // Hz - reasonable tolerance for vocal pitch stability
+      minSustainDuration: 150,  // 150ms minimum - shorter for responsive transcription
       maxSingleNoteDuration: beatDuration * 4,  // 4 beats max before tying (whole note)
-      updateInterval: 100,  // Update every 100ms
+      updateInterval: 50,  // Update every 50ms for smoother response
+      silenceThreshold: 200,  // 200ms silence to end a note
+      confidenceThreshold: 0.7,  // Higher confidence threshold for cleaner transcription
       ...config
     };
 
@@ -54,67 +58,97 @@ export class SustainedNoteHandler {
 
   /**
    * Process a new note - either start sustaining or extend existing sustained note
+   * Returns: true if should add as new note, false if handled as sustain
    */
   processNote(newNote: MusicalNote, noteIndex: number): boolean {
     const currentTime = Date.now();
 
-    // Check if this note should extend the current sustained note (same pitch)
+    // Filter out low confidence notes early to prevent octave jumping
+    if (newNote.confidence < this.config.confidenceThreshold) {
+      // Check if we have an active note that needs finalization due to silence
+      this.checkForSilenceEnd(currentTime);
+      return false; // Don't add low confidence notes
+    }
+
+    // Check if this extends the current sustained note
     if (this.activeSustainedNote && this.isSamePitch(newNote, this.activeSustainedNote.originalNote)) {
+      // Extend the current note
       this.extendSustainedNote(newNote, currentTime);
-      return false; // Don't add this as a separate note
+      return false; // Don't add as separate note
     } else {
-      // Finalize any existing sustained note (pitch changed)
+      // This is a different pitch - finalize current note and start new one
       if (this.activeSustainedNote) {
         this.finalizeSustainedNote(currentTime);
       }
-
-      // OPTIMISTIC: Always start sustaining every new note (assume it will be longer)
-      this.startOptimisticNote(newNote, noteIndex, currentTime);
       
-      return true; // Add this note normally
+      // Start sustaining the new note
+      this.startSustaining(newNote, noteIndex, currentTime);
+      return true; // Add this note
     }
   }
 
   /**
    * Check if two notes are the same pitch (within tolerance)
+   * Uses both frequency and MIDI number for better octave stability
    */
   private isSamePitch(note1: MusicalNote, note2: MusicalNote): boolean {
-    const freqDiff = Math.abs(note1.frequency - note2.frequency);
-    const isSame = freqDiff <= this.config.pitchTolerance;
+    // Primary check: MIDI number should be exactly the same (prevents octave jumping)
+    const midiSame = note1.midiNumber === note2.midiNumber;
     
-    // Debug: Log pitch comparisons occasionally to avoid spam
-    if (Math.random() < 0.1) {
-      console.log(`Pitch compare: ${note1.noteName}(${note1.frequency.toFixed(1)}Hz) vs ${note2.noteName}(${note2.frequency.toFixed(1)}Hz) = ${freqDiff.toFixed(1)}Hz diff, same=${isSame}`);
+    // Secondary check: frequency within tolerance (handles minor pitch variations)
+    const freqDiff = Math.abs(note1.frequency - note2.frequency);
+    const freqSame = freqDiff <= this.config.pitchTolerance;
+    
+    // Both MIDI and frequency must match for stability
+    const isSame = midiSame && freqSame;
+    
+    // Debug: Log pitch comparisons occasionally
+    if (Math.random() < 0.05) {
+      console.log(`🎯 Pitch compare: ${note1.noteName}(MIDI:${note1.midiNumber}, ${note1.frequency.toFixed(1)}Hz) vs ${note2.noteName}(MIDI:${note2.midiNumber}, ${note2.frequency.toFixed(1)}Hz) = same=${isSame} (midi=${midiSame}, freq=${freqSame})`);
     }
     
     return isSame;
   }
 
   /**
-   * Start optimistic sustaining for any new note (assume it will be longer)
+   * Check if silence has lasted long enough to end the current note
    */
-  private startOptimisticNote(note: MusicalNote, noteIndex: number, currentTime: number): void {
-    console.log(`Starting optimistic sustain for ${note.noteName}`);
+  private checkForSilenceEnd(currentTime: number): void {
+    if (!this.activeSustainedNote) return;
+    
+    const silenceDuration = currentTime - this.activeSustainedNote.lastUpdateTime;
+    if (silenceDuration >= this.config.silenceThreshold) {
+      console.log(`🔇 Ending note due to ${silenceDuration}ms silence`);
+      this.finalizeSustainedNote(currentTime);
+    }
+  }
+
+  /**
+   * Start sustaining a new note with proper initial duration
+   */
+  private startSustaining(note: MusicalNote, noteIndex: number, currentTime: number): void {
+    console.log(`🎵 Starting sustain for ${note.noteName} (MIDI: ${note.midiNumber})`);
     
     this.activeSustainedNote = {
-      originalNote: note,
+      originalNote: { ...note },
       startTime: currentTime,
       lastUpdateTime: currentTime,
-      currentDuration: note.duration || 0,
+      currentDuration: 0,
       noteIndex,
       tiedNotes: []
     };
 
-    // Set an initial optimistic duration - start with quarter note (reasonable assumption)
-    const optimisticDuration = this.tempoManager.getNoteDuration('quarter');
-    const optimisticNote = {
+    // Start with a short initial duration that will extend as the note continues
+    const initialDuration = this.config.updateInterval;
+    const initialNote = {
       ...note,
-      duration: optimisticDuration,
-      noteValue: this.tempoManager.getSuggestedNoteValue(optimisticDuration, note.confidence)
+      duration: initialDuration,
+      noteValue: 'eighth', // Start conservatively with eighth note
+      timestamp: currentTime
     };
 
-    // Update the note immediately with optimistic duration
-    this.onNoteUpdate(noteIndex, optimisticNote);
+    // Update the note immediately
+    this.onNoteUpdate(noteIndex, initialNote);
   }
 
   /**
@@ -164,20 +198,28 @@ export class SustainedNoteHandler {
     this.activeSustainedNote.currentDuration = totalDuration;
     this.activeSustainedNote.lastUpdateTime = currentTime;
 
-    // Update the note's duration and note value
+    // Use frequency smoothing for more stable pitch representation
+    const smoothedFrequency = this.weightedAverage(
+      this.activeSustainedNote.originalNote.frequency,
+      newNote.frequency,
+      0.85  // 85% weight to original, 15% to new (more stability)
+    );
+
+    // Keep the original MIDI number to prevent octave jumping
     const updatedNote = {
       ...this.activeSustainedNote.originalNote,
       duration: totalDuration,
       noteValue: this.calculateNoteValue(totalDuration),
-      // Use weighted average for frequency refinement
-      frequency: this.weightedAverage(
-        this.activeSustainedNote.originalNote.frequency,
-        newNote.frequency,
-        0.9  // 90% weight to original, 10% to new
-      ),
-      // Update confidence with new detection
-      confidence: Math.max(this.activeSustainedNote.originalNote.confidence, newNote.confidence)
+      frequency: smoothedFrequency, // Use smoothed frequency
+      // Boost confidence as note sustains (more data = higher confidence)
+      confidence: Math.min(
+        Math.max(this.activeSustainedNote.originalNote.confidence, newNote.confidence), 
+        0.95 // Cap confidence at 95%
+      )
     };
+
+    // Update the active note's frequency for future comparisons
+    this.activeSustainedNote.originalNote.frequency = smoothedFrequency;
 
     // Check if we need to add a tied note instead of extending
     if (totalDuration > this.config.maxSingleNoteDuration) {
@@ -187,7 +229,10 @@ export class SustainedNoteHandler {
       this.onNoteUpdate(this.activeSustainedNote.noteIndex, updatedNote);
     }
 
-    console.log(`Extended sustained note to ${totalDuration}ms (${updatedNote.noteValue})`);
+    // Debug occasionally
+    if (Math.random() < 0.02) {
+      console.log(`🎼 Extended ${updatedNote.noteName} to ${totalDuration}ms (${updatedNote.noteValue}), freq: ${smoothedFrequency.toFixed(1)}Hz`);
+    }
   }
 
   /**
@@ -269,18 +314,27 @@ export class SustainedNoteHandler {
   }
 
   /**
-   * Check for ongoing sustains that need updating
+   * Check for ongoing sustains that need updating (call regularly from outside)
    */
   public checkForUpdates(): void {
     if (!this.activeSustainedNote) return;
 
     const currentTime = Date.now();
-    const timeSinceUpdate = currentTime - this.activeSustainedNote.lastUpdateTime;
+    this.checkForSilenceEnd(currentTime);
+  }
 
-    // If no new pitch data for a while, finalize the sustained note
-    if (timeSinceUpdate > 400) {  // 400ms silence gap
-      this.finalizeSustainedNote(currentTime);
-    }
+  /**
+   * Check if there's currently an active sustained note
+   */
+  public hasActiveSustainedNote(): boolean {
+    return this.activeSustainedNote !== null;
+  }
+
+  /**
+   * Get the current note being sustained (for debugging/display)
+   */
+  public getActiveSustainedNote(): MusicalNote | null {
+    return this.activeSustainedNote ? this.activeSustainedNote.originalNote : null;
   }
 
   /**

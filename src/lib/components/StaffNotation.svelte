@@ -26,6 +26,10 @@
   let panOffset = { x: 0, y: 0 };
   let lastPanPoint = { x: 0, y: 0 };
   let sustainedNoteHandler: SustainedNoteHandler;
+  
+  // Playhead state
+  let playheadPosition = { x: 0, y: 0, visible: false };
+  let currentActiveNoteIndex = -1;
   let registerDetector: RegisterDetector;
   let currentClef: ClefType = 'treble';
   let measuredClefChanges: Map<number, ClefType> = new Map(); // Track clef changes by measure
@@ -63,7 +67,7 @@
     LINE_SPACING = Math.max(12 * scaleFactor, 10);
     NOTE_RADIUS = Math.max(4 * scaleFactor, 3);
     NOTE_SPACING = Math.max(20 * scaleFactor, 16);
-    CLEF_FONT_SIZE = Math.max(32 * scaleFactor, 24); // Reasonable clef size
+    CLEF_FONT_SIZE = Math.max(80 * scaleFactor, 64); // Much larger, truly prominent clef
   }
 
   onMount(() => {
@@ -125,8 +129,11 @@
       // Pass tempo manager for tempo-aware durations
       tempoManager,
       {
-        pitchTolerance: 30,        // Hz - tolerance for pitch matching
-        updateInterval: 100        // Update every 100ms
+        pitchTolerance: 15,        // Hz - tighter tolerance for better accuracy
+        updateInterval: 50,        // Update every 50ms for smoother response
+        silenceThreshold: 200,     // 200ms silence to end notes
+        confidenceThreshold: 0.75, // Higher confidence for cleaner transcription
+        minSustainDuration: 100    // Minimum 100ms for responsive transcription
       }
     );
   }
@@ -181,19 +188,29 @@
   
   // React to pitch changes with sustained note handling
   $: {
-    if (Math.random() < 0.01) {
-      console.log(`StaffNotation: pitchResult=${!!$pitchResult}, freq=${$pitchResult?.frequency || 'null'}, conf=${$pitchResult?.confidence || 'null'}, handler=${!!sustainedNoteHandler}`);
-    }
-    
-    if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.85 && sustainedNoteHandler) {
-      console.log(`🎵 Processing pitch: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
-      const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
-      console.log(`🎶 Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber}) at ${rawNote.frequency.toFixed(1)}Hz`);
-      if (NoteConverter.isVocalRange(rawNote.frequency)) {
-        processRawNote(rawNote);
-      } else {
-        console.log(`Frequency ${rawNote.frequency.toFixed(1)}Hz outside vocal range (80-1200Hz)`);
+    if (sustainedNoteHandler) {
+      // Always check for silence/timeout updates
+      sustainedNoteHandler.checkForUpdates();
+      
+      // Update playhead based on current active note
+      updatePlayhead();
+      
+      // Process new pitch data if available
+      if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.75) {
+        const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
+        
+        if (NoteConverter.isVocalRange(rawNote.frequency)) {
+          processRawNote(rawNote);
+        }
       }
+    }
+  }
+
+  // React to recording state for playhead visibility
+  $: {
+    playheadPosition.visible = $isRecording;
+    if (!$isRecording) {
+      currentActiveNoteIndex = -1;
     }
   }
   
@@ -251,10 +268,15 @@
       // Only add as new note if not extending an existing sustained note
       if (shouldAddNote) {
         audioStateActions.addNote(noteWithCorrectStaffPosition);
+        currentActiveNoteIndex = $notes.length; // Track the new note as active
+      } else {
+        // We're extending an existing note, so the active note is the last one
+        currentActiveNoteIndex = $notes.length - 1;
       }
     } else {
       // Fallback: add note directly if sustainedNoteHandler not ready
       audioStateActions.addNote(noteWithCorrectStaffPosition);
+      currentActiveNoteIndex = $notes.length;
     }
     
     // Keep only last 10 notes for performance (since notes are now longer/sustained)
@@ -287,6 +309,10 @@
     // Reset clef to default
     currentClef = 'treble';
     
+    // Reset playhead
+    currentActiveNoteIndex = -1;
+    playheadPosition.visible = false;
+    
     // Reset register detector
     if (registerDetector) {
       registerDetector.reset();
@@ -300,6 +326,50 @@
 
   // Expose the clear function to parent components
   export { clearNotesAndMeasures };
+
+  /**
+   * Update playhead position based on current active note
+   */
+  function updatePlayhead() {
+    if (!$isRecording || currentActiveNoteIndex < 0 || $notes.length === 0) {
+      playheadPosition.visible = false;
+      return;
+    }
+
+    // Find the position of the current active note
+    const activeNote = $notes[currentActiveNoteIndex];
+    if (!activeNote) {
+      playheadPosition.visible = false;
+      return;
+    }
+
+    // Calculate which measure and position within measure for the active note
+    const measureNum = Math.floor(currentActiveNoteIndex / NOTES_PER_MEASURE) + 1;
+    const noteInMeasure = currentActiveNoteIndex % NOTES_PER_MEASURE;
+    
+    // Calculate which staff line this measure is on
+    const lineIndex = Math.floor((measureNum - 1) / MEASURES_PER_LINE);
+    const measureInLine = ((measureNum - 1) % MEASURES_PER_LINE);
+    
+    // Calculate X position
+    const currentWidth = responsiveWidth || width;
+    const clefSpacing = CLEF_FONT_SIZE * 2.0;
+    const staffStart = STAFF_MARGIN + clefSpacing;
+    const staffEnd = currentWidth - STAFF_MARGIN;
+    const availableWidth = staffEnd - staffStart;
+    const measureWidth = availableWidth / MEASURES_PER_LINE;
+    const measureStart = staffStart + (measureInLine * measureWidth);
+    const noteSpacing = measureWidth / NOTES_PER_MEASURE;
+    const noteX = measureStart + (noteInMeasure * noteSpacing) + (noteSpacing / 2);
+    
+    // Calculate Y position (staff line)
+    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
+    
+    // Update playhead position
+    playheadPosition.x = noteX;
+    playheadPosition.y = staffY;
+    playheadPosition.visible = true;
+  }
   
   function drawStaff() {
     if (!ctx) return;
@@ -344,6 +414,11 @@
     // Draw all notes across multiple lines
     drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
     
+    // Draw playhead if visible and recording
+    if (playheadPosition.visible && $isRecording) {
+      drawPlayhead();
+    }
+    
     // Restore transform
     ctx.restore();
   }
@@ -385,7 +460,7 @@
     // Draw clef symbol for this line
     drawClefSymbol(staffStart + 10, staffY, clefForLine);
     
-    // Draw measure bars
+    // Draw measure bars with increased spacing after clef
     drawMeasureBars(lineIndex, staffY, staffStart, staffEnd);
   }
 
@@ -429,7 +504,7 @@
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     
-    const clefSpacing = CLEF_FONT_SIZE * 2.5; // Increased spacing after clef
+    const clefSpacing = CLEF_FONT_SIZE * 2.0; // Adequate spacing for large clef
     const availableWidth = staffEnd - staffStart - clefSpacing;
     const measureWidth = availableWidth / MEASURES_PER_LINE;
     
@@ -480,7 +555,7 @@
     if (!ctx) return;
     
     const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
-    const clefSpacing = CLEF_FONT_SIZE * 2.5; // Match the spacing from drawStaffLine
+    const clefSpacing = CLEF_FONT_SIZE * 2.0; // Match the spacing from drawStaffSystem
     const staffStart = STAFF_MARGIN + clefSpacing;
     const staffEnd = currentWidth - STAFF_MARGIN;
     const availableWidth = staffEnd - staffStart;
@@ -695,6 +770,47 @@
     }
   }
   
+  /**
+   * Draw the playhead at the current active note position
+   */
+  function drawPlayhead() {
+    if (!ctx || !playheadPosition.visible) return;
+    
+    const x = playheadPosition.x;
+    const y = playheadPosition.y;
+    
+    // Draw a vertical line spanning the full staff height
+    ctx.strokeStyle = '#FF4444'; // Bright red color
+    ctx.lineWidth = 3; // Thick line for visibility
+    ctx.lineCap = 'round';
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y - (LINE_SPACING * 2.5)); // Above staff
+    ctx.lineTo(x, y + (LINE_SPACING * 2.5)); // Below staff
+    ctx.stroke();
+    
+    // Draw a triangle at the top for better visibility
+    ctx.fillStyle = '#FF4444';
+    ctx.beginPath();
+    ctx.moveTo(x, y - (LINE_SPACING * 2.5));
+    ctx.lineTo(x - 5, y - (LINE_SPACING * 2.5) - 8);
+    ctx.lineTo(x + 5, y - (LINE_SPACING * 2.5) - 8);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Add a subtle glow effect
+    ctx.shadowColor = '#FF4444';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(x, y - (LINE_SPACING * 2.5));
+    ctx.lineTo(x, y + (LINE_SPACING * 2.5));
+    ctx.stroke();
+    
+    // Reset shadow
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+  }
+
   function startAnimation() {
     function animate() {
       drawStaff();
