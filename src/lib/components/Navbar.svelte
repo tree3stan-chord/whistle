@@ -15,6 +15,16 @@
       modalActions.setVisible(modalId, !state.isVisible);
     }
   }
+
+  async function handleInitializeClick() {
+    if (!mounted) return;
+    
+    try {
+      await onInitializeAudio();
+    } catch (error) {
+      console.error('Error initializing audio:', error);
+    }
+  }
 </script>
 
 <nav class="navbar">
@@ -30,7 +40,8 @@
         <button 
           class="btn btn-primary initialize-btn"
           disabled={!mounted}
-          on:click={onInitializeAudio}
+          on:click={handleInitializeClick}
+          title={!mounted ? 'Waiting for component to mount...' : 'Click to initialize audio'}
         >
           Initialize Audio
         </button>

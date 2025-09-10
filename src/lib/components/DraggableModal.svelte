@@ -28,19 +28,13 @@
     // Register modal with the store
     modalActions.registerModal(config);
     
-    // Add event listeners for drag
-    titleBarElement?.addEventListener('mousedown', startDrag);
-    titleBarElement?.addEventListener('touchstart', startDrag, { passive: false });
-    
     // Global listeners for drag end
     document.addEventListener('mousemove', handleDrag);
     document.addEventListener('mouseup', endDrag);
     document.addEventListener('touchmove', handleDrag, { passive: false });
     document.addEventListener('touchend', endDrag);
-    
-    // Click to bring to front
-    modalElement?.addEventListener('mousedown', bringToFront);
   });
+
 
   onDestroy(() => {
     // Clean up event listeners
@@ -144,12 +138,20 @@
       z-index: {modalState.zIndex};
       {modalState.size ? `width: ${modalState.size.width}px; height: ${modalState.size.height}px;` : ''}
     "
+    role="dialog"
+    tabindex="0"
+    aria-labelledby="modal-title-{config.id}"
+    on:mousedown={bringToFront}
   >
     <!-- Title Bar -->
     <div
       bind:this={titleBarElement}
       class="modal-title-bar"
-      role="banner"
+      role="button"
+      tabindex="0"
+      aria-label="Drag to move modal"
+      on:mousedown|stopPropagation={startDrag}
+      on:touchstart|stopPropagation={startDrag}
       on:dblclick={handleTitleDoubleClick}
     >
       <div class="title-content">
@@ -167,7 +169,7 @@
           </svg>
         </div>
         
-        <span class="modal-title">{config.title}</span>
+        <span class="modal-title" id="modal-title-{config.id}">{config.title}</span>
       </div>
       
       <div class="title-controls">

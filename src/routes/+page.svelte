@@ -70,12 +70,18 @@
   });
 
   async function initializeAudio() {
-    if (!audioService) return;
+    if (!audioService) {
+      console.error('AudioService not available');
+      return;
+    }
     
     try {
       await audioService.initialize();
+      console.log('Audio initialized successfully');
     } catch (err) {
       console.error('Failed to initialize audio:', err);
+      // Show user-friendly error
+      alert('Failed to initialize audio. Please check microphone permissions.');
     }
   }
 
@@ -167,7 +173,10 @@
           </button>
         {/if}
       {:else}
-        <p class="info-text">Initialize audio from the navbar first</p>
+        <div class="init-prompt">
+          <p class="info-text">🎤 Microphone access needed</p>
+          <p class="help-text">Click "Initialize Audio" in the top navbar to activate microphone</p>
+        </div>
       {/if}
     </div>
   </DraggableModal>
@@ -191,7 +200,7 @@
           {:else if isInitialized}
             ✅ Ready
           {:else}
-            ⏸ Not initialized
+            🎤❌ Microphone not active
           {/if}
         </span>
       </div>
@@ -412,6 +421,22 @@
     font-style: italic;
     text-align: center;
     margin: 0;
+  }
+
+  .init-prompt {
+    text-align: center;
+    padding: 20px;
+    background: rgba(255, 193, 7, 0.1);
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    margin: 10px 0;
+  }
+
+  .help-text {
+    color: #495057;
+    font-size: 14px;
+    margin: 8px 0 0 0;
+    line-height: 1.4;
   }
 
   /* Status Grid */
