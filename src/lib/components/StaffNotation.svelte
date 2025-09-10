@@ -369,7 +369,10 @@
     const measureWidth = availableWidth / MEASURES_PER_LINE;
     
     // Draw measure bars (vertical lines)
-    for (let i = 0; i <= MEASURES_PER_LINE; i++) {
+    // Always draw at least one measure for empty staff
+    const measuresToDraw = Math.max(1, MEASURES_PER_LINE);
+    
+    for (let i = 0; i <= measuresToDraw; i++) {
       const x = staffStart + clefSpacing + (i * measureWidth);
       ctx.beginPath();
       ctx.moveTo(x, staffY - (LINE_SPACING * 2));
