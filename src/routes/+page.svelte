@@ -6,6 +6,8 @@
   import StaffNotation from '../lib/components/StaffNotation.svelte';
   import SessionManager from '../lib/components/SessionManager.svelte';
   import DraggableModal from '../lib/components/DraggableModal.svelte';
+  import TempoControl from '../lib/components/TempoControl.svelte';
+  import ToolboxModal from '../lib/components/ToolboxModal.svelte';
   import Navbar from '../lib/components/Navbar.svelte';
   import type { TranscriptionData } from '../lib/export/ExportService.js';
   
@@ -28,6 +30,14 @@
     
     // Initialize modal positions
     const defaultPositions = getDefaultModalPositions();
+    
+    // Set default modal visibility - keep essential ones visible, hide others for cleaner start
+    modalActions.setVisible('recording-control', true);  // Essential - keep visible
+    modalActions.setVisible('toolbox', true);            // Essential - keep visible  
+    modalActions.setVisible('status-monitor', false);    // Hide by default
+    modalActions.setVisible('session-manager', false);   // Hide by default
+    modalActions.setVisible('lyrics-panel', false);      // Hide by default
+    modalActions.setVisible('tempo-control', false);     // Hide by default
     
     // Register all modals with their configurations
     modalActions.registerModal({
@@ -92,7 +102,12 @@
       if (!isInitialized) {
         await audioService.initialize();
       }
+      
+      // Start timing before recording
+      audioService.startRecordingTiming();
       await audioService.startRecording();
+      
+      console.log('Recording started with tempo timing');
     } catch (err) {
       console.error('Failed to start recording:', err);
     }
@@ -101,6 +116,9 @@
   function stopRecording() {
     if (!audioService) return;
     audioService.stopRecording();
+    
+    // Keep timing running (don't reset) so user can see measure progress
+    console.log('Recording stopped, timing continues');
   }
 
   function formatFrequency(freq: number | null): string {
@@ -117,6 +135,21 @@
     
     // Load notes using centralized store
     audioStateActions.setNotes(data.notes);
+  }
+
+  function clearSession() {
+    // Clear notes and lyrics
+    audioStateActions.setNotes([]);
+    audioStateActions.setSpeechTranscript('');
+    
+    // Reset timing
+    if (audioService) {
+      audioService.resetTiming();
+    }
+    
+    // Trigger staff clear event
+    document.dispatchEvent(new CustomEvent('clearStaff'));
+    console.log('Session cleared with timing reset');
   }
 </script>
 
@@ -144,7 +177,16 @@
 
   <!-- Full Viewport Staff Canvas -->
   <div class="staff-canvas-container">
-    <StaffNotation bind:this={staffComponent} width={1200} height={800} />
+    {#if audioService}
+      <StaffNotation 
+        bind:this={staffComponent} 
+        width={1200} 
+        height={800} 
+        tempoManager={audioService.getTempoManager()} 
+      />
+    {:else}
+      <div class="loading-staff">Loading audio service...</div>
+    {/if}
   </div>
 
   <!-- Recording Control Modal -->
@@ -170,6 +212,18 @@
             class="btn btn-danger btn-large"
           >
             ⏹ Stop Recording
+          </button>
+        {/if}
+        
+        <!-- Clear Session Button -->
+        {#if $notes.length > 0 || currentTranscript.trim()}
+          <button 
+            on:click={clearSession}
+            class="btn btn-secondary"
+            style="margin-top: 8px;"
+            title="Clear all notes, lyrics, and reset timing"
+          >
+            🗑 Clear Session
           </button>
         {/if}
       {:else}
@@ -277,6 +331,34 @@
         Clear Lyrics
       </button>
     </div>
+  </DraggableModal>
+  
+  <!-- Tempo Control Modal -->
+  <DraggableModal config={{
+    id: 'tempo-control',
+    title: 'Tempo & Rhythm',
+    initialPosition: { x: window?.innerWidth / 2 - 150 || 300, y: 200 },
+    minimizable: true,
+    persistent: true
+  }}>
+    {#if audioService?.getTempoManager()}
+      <TempoControl tempoManager={audioService.getTempoManager()} />
+    {:else}
+      <div class="loading-tempo">
+        <p>Initializing tempo control...</p>
+      </div>
+    {/if}
+  </DraggableModal>
+  
+  <!-- Toolbox Modal -->
+  <DraggableModal config={{
+    id: 'toolbox',
+    title: 'Control Panel',
+    initialPosition: { x: 20, y: 20 },
+    minimizable: true,
+    persistent: true
+  }}>
+    <ToolboxModal />
   </DraggableModal>
 
   <!-- Error Message Modal (if any) -->
@@ -725,5 +807,22 @@
   .clear-lyrics-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .loading-tempo, .loading-staff {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+  }
+
+  .loading-staff {
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    margin: 20px;
   }
 </style>

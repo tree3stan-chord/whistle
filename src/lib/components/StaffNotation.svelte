@@ -5,9 +5,11 @@
   import { SustainedNoteHandler } from '../audio/SustainedNoteHandler.js';
   import { RegisterDetector, type ClefType } from '../audio/RegisterDetector.js';
   import { ExportService } from '../export/ExportService.js';
+  import type { TempoManager } from '../audio/TempoManager.js';
   
   export let width = 800;
   export let height = 200;
+  export let tempoManager: TempoManager;
   
   // Responsive sizing based on viewport
   let viewportWidth: number;
@@ -89,7 +91,14 @@
     };
   });
     
-    // Initialize sustained note handler
+    // Sustained note handler will be initialized reactively when tempoManager is available
+    
+    // Initialize register detector
+    registerDetector = new RegisterDetector();
+  
+  // Reactive: Initialize sustained note handler when tempoManager becomes available
+  $: if (tempoManager && !sustainedNoteHandler) {
+    console.log('Initializing SustainedNoteHandler with TempoManager');
     sustainedNoteHandler = new SustainedNoteHandler(
       // Callback to update existing note
       (index: number, updatedNote: MusicalNote) => {
@@ -103,16 +112,14 @@
       (note: MusicalNote) => {
         audioStateActions.addNote(note);
       },
+      // Pass tempo manager for tempo-aware durations
+      tempoManager,
       {
         pitchTolerance: 30,        // Hz - tolerance for pitch matching
-        minSustainDuration: 500,   // 500ms = 0.5 beats
-        maxSingleNoteDuration: 6000, // 6 seconds max before tying
         updateInterval: 100        // Update every 100ms
       }
     );
-    
-    // Initialize register detector
-    registerDetector = new RegisterDetector();
+  }
   
   onDestroy(() => {
     if (animationId) {
@@ -179,11 +186,16 @@
       timestamp: Date.now()
     };
     
-    // Process through sustained note handler
-    const shouldAddNote = sustainedNoteHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
-    
-    // Only add as new note if not extending an existing sustained note
-    if (shouldAddNote) {
+    // Process through sustained note handler if available
+    if (sustainedNoteHandler) {
+      const shouldAddNote = sustainedNoteHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
+      
+      // Only add as new note if not extending an existing sustained note
+      if (shouldAddNote) {
+        audioStateActions.addNote(noteWithCorrectStaffPosition);
+      }
+    } else {
+      // Fallback: add note directly if sustainedNoteHandler not ready
       audioStateActions.addNote(noteWithCorrectStaffPosition);
     }
     
@@ -195,11 +207,9 @@
   }
   
   // React to recording state changes
-  $: if (sustainedNoteHandler) {
+  $: if (sustainedNoteHandler && !$isRecording) {
     // If recording stopped, finalize any sustained notes
-    if (!$isRecording) {
-      finalizeActiveNotes();
-    }
+    finalizeActiveNotes();
   }
   
   function finalizeActiveNotes() {
@@ -610,7 +620,7 @@
   function startAnimation() {
     function animate() {
       drawStaff();
-      drawNotes();
+      // Note: drawStaff() already handles drawing notes via drawNotesMultiline()
       animationId = requestAnimationFrame(animate);
     }
     animate();

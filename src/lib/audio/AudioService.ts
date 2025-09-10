@@ -5,6 +5,7 @@
 import { YinPitchDetector } from './YinPitchDetector.js';
 import { SpeechService } from './SpeechService.js';
 import { VocalIsolationProcessor } from './VocalIsolationProcessor.js';
+import { TempoManager } from './TempoManager.js';
 import { audioStateActions } from '../stores/audioStore.js';
 import type { AudioConfig, PitchDetectionResult } from './types.js';
 
@@ -17,6 +18,7 @@ export class AudioService {
   private pitchDetector: YinPitchDetector | null = null;
   private speechService: SpeechService | null = null;
   private vocalIsolation: VocalIsolationProcessor | null = null;
+  private tempoManager: TempoManager;
   
   private animationFrameId: number | null = null;
   private isAnalyzing = false;
@@ -34,6 +36,9 @@ export class AudioService {
     if (config) {
       this.config = { ...this.config, ...config };
     }
+    
+    // Initialize tempo manager
+    this.tempoManager = new TempoManager();
     
     // Initialize speech service
     this.speechService = new SpeechService();
@@ -396,5 +401,28 @@ export class AudioService {
       ready: this.vocalIsolation.isReady(),
       stats: this.vocalIsolation.getStats()
     };
+  }
+
+  /**
+   * Get tempo manager instance
+   */
+  getTempoManager(): TempoManager {
+    return this.tempoManager;
+  }
+
+  /**
+   * Start recording timing (when user starts recording)
+   */
+  startRecordingTiming(): void {
+    this.tempoManager.startTiming();
+    console.log('Recording timing started');
+  }
+
+  /**
+   * Reset timing (when user stops/resets recording)
+   */
+  resetTiming(): void {
+    this.tempoManager.reset();
+    console.log('Recording timing reset');
   }
 }

@@ -48,39 +48,15 @@
       {/if}
     </div>
 
-    <!-- Right section: Modal toggles and layout controls -->
+    <!-- Right section: Toolbox and layout controls -->
     <div class="navbar-right">
-      <div class="modal-toggles">
+      <div class="toolbox-control">
         <button 
-          class="toggle-btn" 
-          on:click={() => toggleModal('recording-control')}
-          title="Toggle Recording Panel"
+          class="btn btn-primary toolbox-btn" 
+          on:click={() => toggleModal('toolbox')}
+          title="Open Control Panel - Toggle visibility of all interface panels"
         >
-          🎤
-        </button>
-        
-        <button 
-          class="toggle-btn" 
-          on:click={() => toggleModal('status-monitor')}
-          title="Toggle Status Monitor"
-        >
-          📊
-        </button>
-        
-        <button 
-          class="toggle-btn" 
-          on:click={() => toggleModal('session-manager')}
-          title="Toggle Session Manager"
-        >
-          💾
-        </button>
-        
-        <button 
-          class="toggle-btn" 
-          on:click={() => toggleModal('lyrics-panel')}
-          title="Toggle Lyrics Panel"
-        >
-          🎵
+          🧰 Control Panel
         </button>
       </div>
       
@@ -153,34 +129,29 @@
     gap: 16px;
   }
 
-  .modal-toggles {
-    display: flex;
-    gap: 8px;
-    padding: 4px;
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 8px;
-  }
-
-  .toggle-btn {
-    width: 32px;
-    height: 32px;
-    border: none;
-    background: transparent;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s ease;
+  .toolbox-control {
     display: flex;
     align-items: center;
-    justify-content: center;
   }
 
-  .toggle-btn:hover {
-    background: rgba(0, 0, 0, 0.1);
-    transform: scale(1.05);
+  .toolbox-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
-  .toggle-btn:active {
+  .toolbox-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .toolbox-btn:active {
     transform: scale(0.95);
   }
 

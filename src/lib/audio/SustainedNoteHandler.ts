@@ -5,6 +5,7 @@
  */
 
 import type { MusicalNote } from './NoteConverter.js';
+import { TempoManager } from './TempoManager.js';
 
 interface SustainedNoteConfig {
   pitchTolerance: number;  // Hz - how close pitches need to be to be considered "same"
@@ -27,16 +28,22 @@ export class SustainedNoteHandler {
   private activeSustainedNote: ActiveSustainedNote | null = null;
   private onNoteUpdate: (index: number, updatedNote: MusicalNote) => void;
   private onNoteAdd: (note: MusicalNote) => void;
+  private tempoManager: TempoManager;
 
   constructor(
     onNoteUpdate: (index: number, updatedNote: MusicalNote) => void,
     onNoteAdd: (note: MusicalNote) => void,
+    tempoManager: TempoManager,
     config: Partial<SustainedNoteConfig> = {}
   ) {
+    this.tempoManager = tempoManager;
+    
+    // Initialize config with tempo-aware defaults
+    const beatDuration = tempoManager.getBeatDuration();
     this.config = {
       pitchTolerance: 25,  // Hz - within a quartertone  
-      minSustainDuration: 500,  // 500ms = roughly 0.5 beats at 120 BPM
-      maxSingleNoteDuration: 1500,  // 1.5 seconds max for single note before tying
+      minSustainDuration: beatDuration * 0.5,  // 0.5 beats minimum
+      maxSingleNoteDuration: beatDuration * 4,  // 4 beats max before tying (whole note)
       updateInterval: 100,  // Update every 100ms
       ...config
     };
@@ -90,12 +97,12 @@ export class SustainedNoteHandler {
       tiedNotes: []
     };
 
-    // Set an initial optimistic duration - start with half note (longer assumption)
-    const optimisticDuration = 1000; // 1000ms = half note at moderate tempo (more optimistic)
+    // Set an initial optimistic duration - start with quarter note (reasonable assumption)
+    const optimisticDuration = this.tempoManager.getNoteDuration('quarter');
     const optimisticNote = {
       ...note,
       duration: optimisticDuration,
-      noteValue: this.calculateNoteValue(optimisticDuration)
+      noteValue: this.tempoManager.getSuggestedNoteValue(optimisticDuration, note.confidence)
     };
 
     // Update the note immediately with optimistic duration
@@ -276,15 +283,10 @@ export class SustainedNoteHandler {
   }
 
   /**
-   * Calculate note value based on duration
+   * Calculate note value based on duration using tempo context
    */
   private calculateNoteValue(duration: number): string {
-    // More realistic durations for vocal performance
-    if (duration >= 4000) return 'whole';      // 4+ seconds = whole note
-    if (duration >= 2000) return 'half';       // 2+ seconds = half note  
-    if (duration >= 1000) return 'quarter';    // 1+ second = quarter note
-    if (duration >= 500) return 'eighth';      // 0.5+ second = eighth note
-    return 'quarter';  // Default to quarter for shorter sustained notes
+    return this.tempoManager.getSuggestedNoteValue(duration);
   }
 
   /**
