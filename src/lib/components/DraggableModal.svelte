@@ -27,21 +27,11 @@
   onMount(() => {
     // Register modal with the store
     modalActions.registerModal(config);
-    
-    // Global listeners for drag end
-    document.addEventListener('mousemove', handleDrag);
-    document.addEventListener('mouseup', endDrag);
-    document.addEventListener('touchmove', handleDrag, { passive: false });
-    document.addEventListener('touchend', endDrag);
   });
 
 
   onDestroy(() => {
-    // Clean up event listeners
-    document.removeEventListener('mousemove', handleDrag);
-    document.removeEventListener('mouseup', endDrag);
-    document.removeEventListener('touchmove', handleDrag);
-    document.removeEventListener('touchend', endDrag);
+    // Component cleanup handled automatically
   });
 
   function startDrag(event: MouseEvent | TouchEvent) {
@@ -61,6 +51,12 @@
     
     // Add dragging class for visual feedback
     modalElement.classList.add('dragging');
+    
+    // Add document event listeners for drag
+    document.addEventListener('mousemove', handleDrag);
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchmove', handleDrag, { passive: false });
+    document.addEventListener('touchend', endDrag);
     
     event.preventDefault();
   }
@@ -94,6 +90,12 @@
     isDragging = false;
     modalElement.style.userSelect = '';
     modalElement.classList.remove('dragging');
+    
+    // Remove document event listeners
+    document.removeEventListener('mousemove', handleDrag);
+    document.removeEventListener('mouseup', endDrag);
+    document.removeEventListener('touchmove', handleDrag);
+    document.removeEventListener('touchend', endDrag);
   }
 
   function bringToFront() {
