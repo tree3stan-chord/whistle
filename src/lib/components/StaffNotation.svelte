@@ -43,13 +43,9 @@
     viewportWidth = window.innerWidth;
     viewportHeight = window.innerHeight;
     
-    // Use 90% of viewport width, accounting for margins and modals
-    const availableWidth = Math.max(viewportWidth * 0.9, 600);
-    // Use 25% of viewport height for the staff, with minimum and maximum bounds
-    const availableHeight = Math.max(Math.min(viewportHeight * 0.25, 300), 150);
-    
-    responsiveWidth = Math.min(availableWidth, 1200); // Cap at reasonable max
-    responsiveHeight = availableHeight;
+    // Use fixed, reliable dimensions
+    responsiveWidth = Math.min(1200, viewportWidth * 0.9);
+    responsiveHeight = 300; // Fixed height that should show full staff
     
     // Scale constants based on size
     const scaleFactor = Math.min(responsiveWidth / 800, responsiveHeight / 200);
@@ -127,16 +123,17 @@
     }
   });
   
+  
   // React to pitch changes with sustained note handling
   $: {
     if (Math.random() < 0.01) {
       console.log(`StaffNotation: pitchResult=${!!$pitchResult}, freq=${$pitchResult?.frequency || 'null'}, conf=${$pitchResult?.confidence || 'null'}, handler=${!!sustainedNoteHandler}`);
     }
     
-    if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.5 && sustainedNoteHandler) {
-      console.log(`Processing pitch: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
+    if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.85 && sustainedNoteHandler) {
+      console.log(`🎵 Processing pitch: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
       const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
-      console.log(`Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber})`);
+      console.log(`🎶 Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber}) at ${rawNote.frequency.toFixed(1)}Hz`);
       if (NoteConverter.isVocalRange(rawNote.frequency)) {
         processRawNote(rawNote);
       } else {
@@ -255,10 +252,16 @@
     const currentWidth = responsiveWidth || width;
     const currentHeight = responsiveHeight || height;
     
-    // Calculate how many staff lines we need based on measures WITH NOTES
-    // Only create new staff lines when we actually have notes that need them
-    const measuresWithNotes = Math.max(Object.keys(notesByMeasure).length, 1);
-    const linesNeeded = Math.ceil(measuresWithNotes / MEASURES_PER_LINE);
+    // Calculate how many staff lines we need based on notes that actually exist
+    // Only create new staff lines when we have notes beyond the current staff capacity
+    const totalNotes = $notes.length;
+    const measuresNeeded = totalNotes > 0 ? Math.ceil(totalNotes / NOTES_PER_MEASURE) : 1;
+    const linesNeeded = Math.ceil(measuresNeeded / MEASURES_PER_LINE);
+    
+    // Debug staff generation
+    if (totalNotes > 0 && Math.random() < 0.1) {
+      console.log(`Staff: ${totalNotes} notes, ${measuresNeeded} measures, ${linesNeeded} lines needed`);
+    }
     
     // Adjust canvas height dynamically for multiple lines
     const neededHeight = Math.max(currentHeight, 150 + (linesNeeded - 1) * STAFF_LINE_HEIGHT);
@@ -276,8 +279,8 @@
       drawStaffSystem(line, currentWidth, neededHeight);
     }
     
-    // Draw measure information
-    drawMeasureInfo(currentWidth, 150);
+    // Remove debug measure info for cleaner display
+    // drawMeasureInfo(currentWidth, 150);
     
     // Draw all notes across multiple lines
     drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
@@ -369,10 +372,7 @@
     const measureWidth = availableWidth / MEASURES_PER_LINE;
     
     // Draw measure bars (vertical lines)
-    // Always draw at least one measure for empty staff
-    const measuresToDraw = Math.max(1, MEASURES_PER_LINE);
-    
-    for (let i = 0; i <= measuresToDraw; i++) {
+    for (let i = 0; i <= MEASURES_PER_LINE; i++) {
       const x = staffStart + clefSpacing + (i * measureWidth);
       ctx.beginPath();
       ctx.moveTo(x, staffY - (LINE_SPACING * 2));
@@ -407,6 +407,7 @@
       const lineIndex = Math.floor((measure - 1) / MEASURES_PER_LINE);
       const measureInLine = ((measure - 1) % MEASURES_PER_LINE);
       
+      
       if (lineIndex < linesNeeded) {
         drawMeasureNotes(notesInMeasure, lineIndex, measureInLine, currentWidth);
       }
@@ -431,6 +432,7 @@
     notesInMeasure.forEach(({ note, index }, noteIndex) => {
       const x = measureStart + (noteIndex * noteSpacing) + (noteSpacing / 2);
       const y = staffY - (note.staffPosition * LINE_SPACING / 2);
+      
       
       // Calculate width based on note duration
       const noteWidth = Math.min(calculateNoteWidth(note), noteSpacing * 0.8);
@@ -666,21 +668,18 @@
 <div class="staff-container">
   <canvas 
     bind:this={canvas} 
-    width={responsiveWidth || width} 
-    height={responsiveHeight || height}
+    width="1200" 
+    height="300"
     class="staff-canvas"
   ></canvas>
 </div>
 
 <style>
   .staff-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     width: 100%;
-    height: 100%;
-    padding: 10px;
+    overflow-x: auto;
+    overflow-y: auto;
+    padding: 20px;
     box-sizing: border-box;
   }
   
@@ -689,9 +688,7 @@
     border-radius: 8px;
     background: white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+    display: block;
   }
 
   /* Ensure responsive behavior */

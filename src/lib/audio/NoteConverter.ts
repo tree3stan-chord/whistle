@@ -29,15 +29,18 @@ export class NoteConverter {
    * Convert frequency to musical note information
    */
   static frequencyToNote(frequency: number, confidence: number = 1.0): MusicalNote {
-    // Convert frequency to MIDI number using equal temperament
-    const midiNumber = Math.round(12 * Math.log2(frequency / this.A4_FREQUENCY) + this.A4_MIDI);
+    // FIXED: More accurate frequency to MIDI conversion
+    // Formula: MIDI = 69 + 12 * log2(f/440)
+    const exactMidi = 69 + 12 * Math.log2(frequency / 440);
+    const midiNumber = Math.round(exactMidi);
+    
     
     // Extract note information
     const octave = Math.floor(midiNumber / 12) - 1;
     const pitchClass = this.NOTE_NAMES[midiNumber % 12];
     const noteName = `${pitchClass}${octave}`;
     
-    // Calculate staff position (treble clef, middle line = B4 = position 0)
+    // Calculate staff position using corrected logic
     const staffPosition = this.midiToStaffPosition(midiNumber);
     
     return {

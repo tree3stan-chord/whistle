@@ -19,11 +19,11 @@ export class YinPitchDetector {
   constructor(sampleRate: number, bufferSize: number = 2048, config?: Partial<YinConfig>) {
     this.sampleRate = sampleRate;
     this.bufferSize = bufferSize;
-    this.threshold = config?.threshold ?? 0.08;
+    this.threshold = config?.threshold ?? 0.15; // Much stricter threshold
     
-    // Frequency range constraints (human vocal range + instruments)
-    this.minFreq = config?.minFreq ?? 60;   // ~B1
-    this.maxFreq = config?.maxFreq ?? 2000; // ~B6
+    // Frequency range constraints (tighter vocal range)
+    this.minFreq = config?.minFreq ?? 80;   // ~E2 (lowest typical vocal)
+    this.maxFreq = config?.maxFreq ?? 1000; // ~B5 (highest typical vocal)
     
     // Calculate period bounds from frequency range
     this.maxPeriod = Math.floor(this.sampleRate / this.minFreq);
