@@ -48,17 +48,8 @@
       {/if}
     </div>
 
-    <!-- Right section: Toolbox and layout controls -->
+    <!-- Right section: Layout controls -->
     <div class="navbar-right">
-      <div class="toolbox-control">
-        <button 
-          class="btn btn-primary toolbox-btn" 
-          on:click={() => toggleModal('toolbox')}
-          title="Open Control Panel - Toggle visibility of all interface panels"
-        >
-          🧰 Control Panel
-        </button>
-      </div>
       
       <div class="layout-controls">
         <button 

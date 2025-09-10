@@ -7,7 +7,7 @@
   import SessionManager from '../lib/components/SessionManager.svelte';
   import DraggableModal from '../lib/components/DraggableModal.svelte';
   import TempoControl from '../lib/components/TempoControl.svelte';
-  import ToolboxModal from '../lib/components/ToolboxModal.svelte';
+  import DraggableToolbox from '../lib/components/DraggableToolbox.svelte';
   import Navbar from '../lib/components/Navbar.svelte';
   import type { TranscriptionData } from '../lib/export/ExportService.js';
   
@@ -31,15 +31,7 @@
     // Initialize modal positions
     const defaultPositions = getDefaultModalPositions();
     
-    // Set default modal visibility - keep essential ones visible, hide others for cleaner start
-    modalActions.setVisible('recording-control', true);  // Essential - keep visible
-    modalActions.setVisible('toolbox', true);            // Essential - keep visible  
-    modalActions.setVisible('status-monitor', false);    // Hide by default
-    modalActions.setVisible('session-manager', false);   // Hide by default
-    modalActions.setVisible('lyrics-panel', false);      // Hide by default
-    modalActions.setVisible('tempo-control', false);     // Hide by default
-    
-    // Register all modals with their configurations
+    // Register all modals with their configurations first
     modalActions.registerModal({
       id: 'recording-control',
       title: 'Recording Control',
@@ -71,6 +63,15 @@
       minimizable: true,
       persistent: true
     });
+    
+    // Set default modal visibility AFTER registration - only Recording Control and Session Manager visible
+    setTimeout(() => {
+      modalActions.setVisible('recording-control', true);   // Essential - keep visible
+      modalActions.setVisible('session-manager', true);     // Essential - keep visible  
+      modalActions.setVisible('status-monitor', false);     // Hide by default
+      modalActions.setVisible('lyrics-panel', false);       // Hide by default
+      modalActions.setVisible('tempo-control', false);      // Hide by default
+    }, 100); // Small delay to ensure registration is complete
   });
 
   onDestroy(async () => {
@@ -350,16 +351,8 @@
     {/if}
   </DraggableModal>
   
-  <!-- Toolbox Modal -->
-  <DraggableModal config={{
-    id: 'toolbox',
-    title: 'Control Panel',
-    initialPosition: { x: 20, y: 20 },
-    minimizable: true,
-    persistent: true
-  }}>
-    <ToolboxModal />
-  </DraggableModal>
+  <!-- Standalone Draggable Toolbox -->
+  <DraggableToolbox />
 
   <!-- Error Message Modal (if any) -->
   {#if error}
