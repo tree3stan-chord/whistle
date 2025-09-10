@@ -71,8 +71,7 @@
     left: 0;
     right: 0;
     height: 60px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
+    background: #e9ecef; /* Off-gray background */
     border-bottom: 1px solid rgba(0, 0, 0, 0.1);
     z-index: 100;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);

@@ -20,6 +20,11 @@
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
   let animationId: number;
+  
+  // Canvas panning state
+  let isPanning = false;
+  let panOffset = { x: 0, y: 0 };
+  let lastPanPoint = { x: 0, y: 0 };
   let sustainedNoteHandler: SustainedNoteHandler;
   let registerDetector: RegisterDetector;
   let currentClef: ClefType = 'treble';
@@ -43,17 +48,22 @@
     viewportWidth = window.innerWidth;
     viewportHeight = window.innerHeight;
     
-    // Use fixed, reliable dimensions
-    responsiveWidth = Math.min(1200, viewportWidth * 0.9);
-    responsiveHeight = 300; // Fixed height that should show full staff
+    // Use full viewport for canvas (minus navbar height)
+    responsiveWidth = viewportWidth;
+    responsiveHeight = viewportHeight - 60; // 60px for navbar
     
-    // Scale constants based on size
-    const scaleFactor = Math.min(responsiveWidth / 800, responsiveHeight / 200);
-    STAFF_MARGIN = Math.max(50 * scaleFactor, 30);
-    LINE_SPACING = Math.max(12 * scaleFactor, 8);
+    // Scale constants based on viewport size but with sensible bounds
+    const baseWidth = 1200; // Reference width
+    const baseHeight = 600; // Reference height
+    const widthScale = responsiveWidth / baseWidth;
+    const heightScale = responsiveHeight / baseHeight;
+    const scaleFactor = Math.min(widthScale, heightScale, 2.0); // Cap scaling at 2x
+    
+    STAFF_MARGIN = Math.max(50 * scaleFactor, 40);
+    LINE_SPACING = Math.max(12 * scaleFactor, 10);
     NOTE_RADIUS = Math.max(4 * scaleFactor, 3);
-    NOTE_SPACING = Math.max(20 * scaleFactor, 15);
-    CLEF_FONT_SIZE = Math.max(64 * scaleFactor, 48); // Much bigger clef symbols
+    NOTE_SPACING = Math.max(20 * scaleFactor, 16);
+    CLEF_FONT_SIZE = Math.max(32 * scaleFactor, 24); // Reasonable clef size
   }
 
   onMount(() => {
@@ -63,6 +73,10 @@
       ctx = canvas.getContext('2d')!;
       drawStaff();
       startAnimation();
+      
+      // Set up canvas panning
+      canvas.style.cursor = 'grab';
+      canvas.addEventListener('mousedown', startPan);
     }
     
     // Update on window resize
@@ -121,7 +135,48 @@
     if (animationId) {
       cancelAnimationFrame(animationId);
     }
+    
+    // Clean up panning event listeners
+    if (canvas) {
+      canvas.removeEventListener('mousedown', startPan);
+      document.removeEventListener('mousemove', handlePan);
+      document.removeEventListener('mouseup', endPan);
+    }
   });
+  
+  // Canvas panning functions
+  function startPan(event: MouseEvent) {
+    isPanning = true;
+    lastPanPoint = { x: event.clientX, y: event.clientY };
+    canvas.style.cursor = 'grabbing';
+    
+    document.addEventListener('mousemove', handlePan);
+    document.addEventListener('mouseup', endPan);
+    event.preventDefault();
+  }
+  
+  function handlePan(event: MouseEvent) {
+    if (!isPanning) return;
+    
+    const deltaX = event.clientX - lastPanPoint.x;
+    const deltaY = event.clientY - lastPanPoint.y;
+    
+    panOffset.x += deltaX;
+    panOffset.y += deltaY;
+    
+    lastPanPoint = { x: event.clientX, y: event.clientY };
+    
+    // Redraw with new offset
+    drawStaff();
+  }
+  
+  function endPan() {
+    isPanning = false;
+    canvas.style.cursor = 'grab';
+    
+    document.removeEventListener('mousemove', handlePan);
+    document.removeEventListener('mouseup', endPan);
+  }
   
   
   // React to pitch changes with sustained note handling
@@ -274,6 +329,10 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, currentWidth, neededHeight);
     
+    // Apply panning transform
+    ctx.save();
+    ctx.translate(panOffset.x, panOffset.y);
+    
     // Draw all staff systems (lines)
     for (let line = 0; line < linesNeeded; line++) {
       drawStaffSystem(line, currentWidth, neededHeight);
@@ -284,6 +343,9 @@
     
     // Draw all notes across multiple lines
     drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
+    
+    // Restore transform
+    ctx.restore();
   }
   
   function drawStaffSystem(lineIndex: number, currentWidth: number, totalHeight: number) {
@@ -668,19 +730,22 @@
 <div class="staff-container">
   <canvas 
     bind:this={canvas} 
-    width="1200" 
-    height="300"
+    width={responsiveWidth || 1200} 
+    height={responsiveHeight || 600}
     class="staff-canvas"
   ></canvas>
 </div>
 
 <style>
   .staff-container {
-    width: 100%;
-    overflow-x: auto;
-    overflow-y: auto;
-    padding: 20px;
-    box-sizing: border-box;
+    position: fixed;
+    top: 60px; /* Below navbar */
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+    padding: 0;
+    background: #f8f9fa; /* Light gray background */
   }
   
   .staff-canvas {
