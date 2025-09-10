@@ -128,14 +128,18 @@
   });
   
   // React to pitch changes with sustained note handling
-  $: if ($pitchResult && $pitchResult.confidence > 0.5 && sustainedNoteHandler) {
-    console.log(`Pitch detected: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
-    const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
-    console.log(`Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber})`);
-    if (NoteConverter.isVocalRange(rawNote.frequency)) {
-      processRawNote(rawNote);
-    } else {
-      console.log(`Frequency ${rawNote.frequency.toFixed(1)}Hz outside vocal range (80-1200Hz)`);
+  $: if ($pitchResult) {
+    console.log(`Pitch result: freq=${$pitchResult.frequency?.toFixed(1) || 'null'}Hz, conf=${$pitchResult.confidence?.toFixed(3) || 'null'}, handler=${!!sustainedNoteHandler}`);
+    
+    if ($pitchResult.confidence > 0.5 && sustainedNoteHandler) {
+      console.log(`Processing pitch: ${$pitchResult.frequency.toFixed(1)}Hz, confidence: ${$pitchResult.confidence.toFixed(3)}`);
+      const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
+      console.log(`Converted to note: ${rawNote.noteName} (MIDI ${rawNote.midiNumber})`);
+      if (NoteConverter.isVocalRange(rawNote.frequency)) {
+        processRawNote(rawNote);
+      } else {
+        console.log(`Frequency ${rawNote.frequency.toFixed(1)}Hz outside vocal range (80-1200Hz)`);
+      }
     }
   }
   
@@ -331,12 +335,14 @@
     
     switch (clefToUse) {
       case 'treble':
-        // Treble clef centers on G line (2nd line from bottom, -LINE_SPACING from center)
-        ctx.fillText('𝄞', x, staffY - LINE_SPACING);
+        // Treble clef centers on G4 line (2nd line from bottom)
+        // G4 is at staff position -2, so Y position should be staffY + LINE_SPACING
+        // Adjust slightly to center properly on the G line  
+        ctx.fillText('𝄞', x, staffY + (LINE_SPACING * 0.5));
         break;
       case 'bass':
-        // Bass clef centers on F line (4th line from bottom, +LINE_SPACING from center)
-        ctx.fillText('𝄢', x, staffY + LINE_SPACING);
+        // Bass clef centers on F line (2nd line from bottom, -LINE_SPACING from center)
+        ctx.fillText('𝄢', x, staffY - LINE_SPACING);
         break;
       case 'alto':
         // Alto clef centers exactly on middle line

@@ -41,7 +41,7 @@ export class SustainedNoteHandler {
     // Initialize config with tempo-aware defaults
     const beatDuration = tempoManager.getBeatDuration();
     this.config = {
-      pitchTolerance: 25,  // Hz - within a quartertone  
+      pitchTolerance: 8,  // Hz - much tighter tolerance (roughly 1/4 semitone)  
       minSustainDuration: beatDuration * 0.5,  // 0.5 beats minimum
       maxSingleNoteDuration: beatDuration * 4,  // 4 beats max before tying (whole note)
       updateInterval: 100,  // Update every 100ms
@@ -79,7 +79,15 @@ export class SustainedNoteHandler {
    * Check if two notes are the same pitch (within tolerance)
    */
   private isSamePitch(note1: MusicalNote, note2: MusicalNote): boolean {
-    return Math.abs(note1.frequency - note2.frequency) <= this.config.pitchTolerance;
+    const freqDiff = Math.abs(note1.frequency - note2.frequency);
+    const isSame = freqDiff <= this.config.pitchTolerance;
+    
+    // Debug: Log pitch comparisons occasionally to avoid spam
+    if (Math.random() < 0.1) {
+      console.log(`Pitch compare: ${note1.noteName}(${note1.frequency.toFixed(1)}Hz) vs ${note2.noteName}(${note2.frequency.toFixed(1)}Hz) = ${freqDiff.toFixed(1)}Hz diff, same=${isSame}`);
+    }
+    
+    return isSame;
   }
 
   /**

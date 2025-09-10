@@ -226,7 +226,13 @@ export class AudioService {
    */
   private startAnalysisLoop = (): void => {
     if (!this.isAnalyzing || !this.analyser || !this.pitchDetector) {
+      console.log(`Analysis loop stopped: analyzing=${this.isAnalyzing}, analyser=${!!this.analyser}, pitchDetector=${!!this.pitchDetector}`);
       return;
+    }
+    
+    // Debug: Log that analysis loop is running (very occasionally)
+    if (Math.random() < 0.001) {
+      console.log('Analysis loop running...');
     }
     
     // Get time domain data
@@ -247,6 +253,11 @@ export class AudioService {
     
     // Detect pitch on processed audio
     const pitchResult = this.pitchDetector.detectPitch(processedData);
+    
+    // Debug: Log pitch results periodically
+    if (Math.random() < 0.01) { // Log ~1% of results to avoid spam
+      console.log(`AudioService pitch: freq=${pitchResult.frequency?.toFixed(1) || 'null'}Hz, conf=${pitchResult.confidence?.toFixed(3) || 'null'}`);
+    }
     
     // Update state
     audioStateActions.setPitchResult(pitchResult);

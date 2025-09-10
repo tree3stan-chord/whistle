@@ -9,60 +9,64 @@
   let toolboxElement: HTMLDivElement;
   let titleBarElement: HTMLDivElement;
 
-  // Modal visibility states
-  $: recordingControlVisible = $modalStates['recording-control']?.isVisible ?? true;
-  $: statusMonitorVisible = $modalStates['status-monitor']?.isVisible ?? true;
-  $: sessionManagerVisible = $modalStates['session-manager']?.isVisible ?? true;
-  $: lyricsPanelVisible = $modalStates['lyrics-panel']?.isVisible ?? true;
-  $: tempoControlVisible = $modalStates['tempo-control']?.isVisible ?? true;
-  
   function toggleModal(modalId: string) {
     const currentState = $modalStates[modalId]?.isVisible ?? true;
     modalActions.setVisible(modalId, !currentState);
+    console.log(`Toggled ${modalId}: ${currentState} -> ${!currentState}`);
   }
   
-  // Modal definitions with icons and descriptions
-  const modalTools = [
+  // Modal definitions with icons and descriptions (reactive)
+  $: modalTools = [
     {
       id: 'recording-control',
       name: 'Recording Control',
       icon: '🎤',
       description: 'Start/stop recording and session controls',
-      isVisible: recordingControlVisible
+      isVisible: $modalStates['recording-control']?.isVisible ?? true
     },
     {
       id: 'status-monitor', 
       name: 'Status Monitor',
       icon: '📊',
       description: 'Real-time pitch and audio level monitoring',
-      isVisible: statusMonitorVisible
+      isVisible: $modalStates['status-monitor']?.isVisible ?? false
     },
     {
       id: 'session-manager',
       name: 'Session Manager', 
       icon: '💾',
       description: 'Save, load, and export sessions',
-      isVisible: sessionManagerVisible
+      isVisible: $modalStates['session-manager']?.isVisible ?? true
     },
     {
       id: 'lyrics-panel',
       name: 'Lyrics Panel',
       icon: '🎵',
       description: 'Speech recognition and lyrics display',
-      isVisible: lyricsPanelVisible
+      isVisible: $modalStates['lyrics-panel']?.isVisible ?? false
     },
     {
       id: 'tempo-control',
       name: 'Tempo & Rhythm',
       icon: '⏱️', 
       description: 'BPM, time signature, and playhead control',
-      isVisible: tempoControlVisible
+      isVisible: $modalStates['tempo-control']?.isVisible ?? false
     }
   ];
   
   // Count visible modals for status
   $: visibleCount = modalTools.filter(tool => tool.isVisible).length;
   $: totalCount = modalTools.length;
+  
+  // Debug log
+  $: console.log('Modal states updated:', {
+    recordingControl: $modalStates['recording-control']?.isVisible,
+    statusMonitor: $modalStates['status-monitor']?.isVisible,
+    sessionManager: $modalStates['session-manager']?.isVisible,
+    lyricsPanel: $modalStates['lyrics-panel']?.isVisible,
+    tempoControl: $modalStates['tempo-control']?.isVisible,
+    visibleCount
+  });
 
   // Drag functionality
   function startDrag(event: MouseEvent | TouchEvent) {
