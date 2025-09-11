@@ -74,22 +74,27 @@ export class SustainedNoteHandler {
     console.log(`🎤 Processing note: ${newNote.noteName} (MIDI: ${newNote.midiNumber}, ${newNote.frequency.toFixed(1)}Hz, conf: ${newNote.confidence.toFixed(3)})`);
 
     // Check if this extends the current sustained note
-    if (this.activeSustainedNote && this.isSamePitch(newNote, this.activeSustainedNote.originalNote)) {
-      console.log(`🔄 Extending sustained note: ${this.activeSustainedNote.originalNote.noteName}`);
-      // Extend the current note
-      this.extendSustainedNote(newNote, currentTime);
-      return false; // Don't add as separate note
-    } else {
-      // This is a different pitch - finalize current note and start new one
-      if (this.activeSustainedNote) {
-        console.log(`🔚 Finalizing previous note: ${this.activeSustainedNote.originalNote.noteName}`);
-        this.finalizeSustainedNote(currentTime);
-      }
+    if (this.activeSustainedNote) {
+      const isSame = this.isSamePitch(newNote, this.activeSustainedNote.originalNote);
+      console.log(`🔍 Checking sustain: ${newNote.noteName} vs ${this.activeSustainedNote.originalNote.noteName} = ${isSame}`);
       
-      // Start sustaining the new note
-      this.startSustaining(newNote, noteIndex, currentTime);
-      return true; // Add this note
+      if (isSame) {
+        console.log(`🔄 Extending sustained note: ${this.activeSustainedNote.originalNote.noteName}`);
+        // Extend the current note
+        this.extendSustainedNote(newNote, currentTime);
+        return false; // Don't add as separate note
+      }
     }
+    
+    // This is a different pitch or no active note - finalize current note and start new one
+    if (this.activeSustainedNote) {
+      console.log(`🔚 Finalizing previous note: ${this.activeSustainedNote.originalNote.noteName}`);
+      this.finalizeSustainedNote(currentTime);
+    }
+    
+    // Start sustaining the new note
+    this.startSustaining(newNote, noteIndex, currentTime);
+    return true; // Add this note
   }
 
   /**

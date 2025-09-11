@@ -20,24 +20,18 @@
   };
 
   // Subscribe to modal store for this specific modal
-  $: if ($modalStates[config.id]) {
-    modalState = $modalStates[config.id];
+  $: {
+    if ($modalStates[config.id]) {
+      modalState = $modalStates[config.id];
+    } else {
+      // If modal not found in store, ensure it gets registered
+      console.warn(`Modal ${config.id} not found in store, attempting registration`);
+      modalActions.registerModal(config);
+    }
   }
 
   onMount(() => {
-    // Register modal with the store
-    console.log(`DraggableModal onMount: registering ${config.id}`, config);
-    modalActions.registerModal(config);
-    
-    // For recording-control, ensure it's visible
-    if (config.id === 'recording-control') {
-      setTimeout(() => {
-        console.log(`Force setting recording-control visible`);
-        modalActions.setVisible('recording-control', true);
-        console.log(`Recording control modal state:`, modalState);
-        console.log(`Recording control position: x=${modalState.position.x}, y=${modalState.position.y}, z-index=${modalState.zIndex}`);
-      }, 50);
-    }
+    // Modal should already be registered by parent component
   });
 
 
@@ -171,7 +165,6 @@
       top: {modalState.position.y}px;
       z-index: {modalState.zIndex};
       {modalState.size ? `width: ${modalState.size.width}px; height: ${modalState.size.height}px;` : ''}
-      {config.id === 'recording-control' ? 'border: 3px solid red !important;' : ''}
     "
     role="dialog"
     tabindex="0"

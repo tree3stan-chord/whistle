@@ -129,11 +129,11 @@
       // Pass tempo manager for tempo-aware durations
       tempoManager,
       {
-        pitchTolerance: 50,        // Hz - much more forgiving tolerance
-        updateInterval: 50,        // Update every 50ms for smoother response
-        silenceThreshold: 400,     // 400ms silence to end notes (very forgiving)
-        confidenceThreshold: 0.5,  // Lower confidence for better sustaining
-        minSustainDuration: 100    // Minimum 100ms for responsive transcription
+        pitchTolerance: 120,       // Hz - very forgiving tolerance to prevent note splitting
+        updateInterval: 100,       // Update every 100ms to reduce oversensitivity  
+        silenceThreshold: 500,     // 500ms silence before ending sustained notes
+        confidenceThreshold: 0.3,  // Slightly higher to reduce noise triggering
+        minSustainDuration: 200    // Minimum 200ms before considering a real note
       }
     );
   }
@@ -195,8 +195,8 @@
       // Update playhead based on current active note
       updatePlayhead();
       
-      // Process new pitch data if available - lower threshold for better sustaining
-      if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.5) {
+      // Process new pitch data if available - balanced threshold for sustained notes
+      if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.4) {
         const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
         
         if (NoteConverter.isVocalRange(rawNote.frequency)) {
@@ -279,11 +279,8 @@
       currentActiveNoteIndex = $notes.length;
     }
     
-    // Keep only last 10 notes for performance (since notes are now longer/sustained)
-    if ($notes.length > 10) {
-      const recentNotes = $notes.slice(-10);
-      audioStateActions.setNotes(recentNotes);
-    }
+    // Allow unlimited notes for proper musical transcription
+    // Performance will be managed through canvas optimization and staff pagination
   }
   
   // React to recording state changes

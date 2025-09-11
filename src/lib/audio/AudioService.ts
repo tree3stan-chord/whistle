@@ -22,13 +22,15 @@ export class AudioService {
   
   private animationFrameId: number | null = null;
   private isAnalyzing = false;
+  private lastAnalysisTime = 0;
+  private analysisInterval = 50; // Analyze every 50ms for stability
   
   private config: AudioConfig = {
     deviceId: null,
     sampleRate: 48000,
-    bufferSize: 4096,
-    minFrequency: 60,
-    maxFrequency: 2000,
+    bufferSize: 2048,  // Smaller buffer for more responsive detection
+    minFrequency: 80,   // Tighter vocal range - E2 (male low)
+    maxFrequency: 800,  // G5 (female high) - prevents octave jumping
     vocalIsolationEnabled: true
   };
 
@@ -230,43 +232,34 @@ export class AudioService {
       return;
     }
     
-    // Debug: Log that analysis loop is running (very occasionally)
-    if (Math.random() < 0.001) {
-      console.log('Analysis loop running...');
+    const currentTime = Date.now();
+    
+    // Throttle analysis to prevent excessive processing
+    if (currentTime - this.lastAnalysisTime >= this.analysisInterval) {
+      this.lastAnalysisTime = currentTime;
+      
+      // Get time domain data
+      const bufferLength = this.analyser.fftSize;
+      const dataArray = new Float32Array(bufferLength);
+      this.analyser.getFloatTimeDomainData(dataArray);
+      
+      // TEMPORARY: Disable vocal isolation to test pitch detection
+      let processedData = dataArray;
+      // if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
+      //   const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
+      //   processedData = isolationResult.processedAudio;
+      //   
+      //   // Update vocal isolation state
+      //   audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
+      //   audioStateActions.setVoiceActivity(isolationResult.vadResult.confidence);
+      // }
+      
+      // Detect pitch on processed audio
+      const pitchResult = this.pitchDetector.detectPitch(processedData);
+      
+      // Update state only if we have new analysis
+      audioStateActions.setPitchResult(pitchResult);
     }
-    
-    // Get time domain data
-    const bufferLength = this.analyser.fftSize;
-    const dataArray = new Float32Array(bufferLength);
-    this.analyser.getFloatTimeDomainData(dataArray);
-    
-    // TEMPORARY: Disable vocal isolation to test pitch detection
-    let processedData = dataArray;
-    // if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
-    //   const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
-    //   processedData = isolationResult.processedAudio;
-    //   
-    //   // Update vocal isolation state
-    //   audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
-    //   audioStateActions.setVoiceActivity(isolationResult.vadResult.confidence);
-    // }
-    
-    // Detect pitch on processed audio
-    const pitchResult = this.pitchDetector.detectPitch(processedData);
-    
-    // Debug: Log pitch results to understand what's happening
-    if (pitchResult === null || pitchResult === undefined) {
-      if (Math.random() < 0.01) {
-        console.log(`AudioService: pitchResult is ${pitchResult}`);
-      }
-    } else {
-      if (Math.random() < 0.01) {
-        console.log(`AudioService pitch: freq=${pitchResult.frequency?.toFixed(1) || 'null'}Hz, conf=${pitchResult.confidence?.toFixed(3) || 'null'}`);
-      }
-    }
-    
-    // Update state
-    audioStateActions.setPitchResult(pitchResult);
     
     // Continue loop
     this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);

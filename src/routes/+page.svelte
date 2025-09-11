@@ -31,7 +31,28 @@
     // Initialize modal positions
     const defaultPositions = getDefaultModalPositions();
     
-    // Remove duplicate registration - let DraggableModal components self-register
+    // FORCE CLEAR any saved recording-control state that might be hiding it
+    modalActions.removeFromStorage('recording-control');
+    
+    // Register all modals explicitly to ensure proper initialization
+    modalActions.registerModal({
+      id: 'recording-control',
+      title: 'Recording Control',
+      initialPosition: defaultPositions['recording-control'],
+      minimizable: true,
+      persistent: true
+    });
+    
+    // FORCE recording control to be visible immediately
+    modalActions.setVisible('recording-control', true);
+    
+    modalActions.registerModal({
+      id: 'tempo-control',
+      title: 'Tempo & Rhythm',
+      initialPosition: defaultPositions['tempo-control'],
+      minimizable: true,
+      persistent: true
+    });
     
     modalActions.registerModal({
       id: 'status-monitor',
@@ -185,7 +206,6 @@
   </div>
 
   <!-- Recording Control Modal -->
-  {#if mounted}
   <DraggableModal config={{
     id: 'recording-control',
     title: 'Recording Control',
@@ -230,7 +250,6 @@
       {/if}
     </div>
   </DraggableModal>
-  {/if}
 
   <!-- Status Monitor Modal -->
   <DraggableModal config={{
