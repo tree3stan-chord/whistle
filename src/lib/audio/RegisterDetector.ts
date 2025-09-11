@@ -60,20 +60,20 @@ export class RegisterDetector {
         name: 'Alto Clef'
       },
       bass: {
-        optimal: { min: 36, max: 59 },     // C2 to B3 (optimal range - below C4)
-        extended: { min: 24, max: 72 },    // C1 to C5 (playable range)
+        optimal: { min: 36, max: 58 },     // C2 to A#3 (optimal range - below B3)
+        extended: { min: 24, max: 59 },    // C1 to B3 (playable range)
         centerLine: 50,                    // D3 (middle line of bass staff)
         name: 'Bass Clef'
       }
     };
 
-    // Analysis parameters
+    // Analysis parameters - very conservative clef switching
     this.recentNotes = [];              // Recent notes for analysis
-    this.analysisWindow = 8;            // Larger window to require more evidence for clef changes
-    this.clefChangeThreshold = 0.7;     // Confidence threshold for clef change
+    this.analysisWindow = 10;           // Larger window to require more evidence for clef changes
+    this.clefChangeThreshold = 0.8;     // Higher confidence threshold for clef change
     this.currentClef = 'treble';         // Default clef
     this.lastClefChange = 0;            // Timestamp of last clef change
-    this.minClefChangeInterval = 3000;  // Require 3 seconds between clef changes to prevent erratic switching
+    this.minClefChangeInterval = 5000;  // Require 5 seconds between clef changes to prevent erratic switching
 
     // Register statistics
     this.registerStats = {
@@ -111,19 +111,19 @@ export class RegisterDetector {
       this.recentNotes = this.recentNotes.slice(-this.analysisWindow);
     }
 
-    // Only trigger bass clef for notes below A3 if we have sustained evidence
-    if (midiNote <= 57 && this.currentClef !== 'bass') { // A3 = MIDI 57
+    // Only trigger bass clef for notes below B3 (MIDI 59) with very strong evidence
+    if (midiNote < 59 && this.currentClef !== 'bass') { // Below B3 = MIDI 59
       // Check if we have multiple recent notes in this low range
-      const recentLowNotes = this.recentNotes.filter(n => n.midi <= 57);
-      if (recentLowNotes.length >= 3) { // Require at least 3 low notes
-        console.log(`Multiple notes below A3 detected, switching to bass clef`);
+      const recentLowNotes = this.recentNotes.filter(n => n.midi < 59);
+      if (recentLowNotes.length >= 6) { // Require at least 6 low notes for very strong evidence
+        console.log(`Multiple notes below B3 detected, switching to bass clef`);
         return this.changeClef('bass');
       }
     }
 
-    // Switch back to treble for notes significantly above A3
-    if (midiNote >= 64 && this.currentClef !== 'treble') { // E4 = MIDI 64, higher threshold for switching back
-      console.log(`Note ${note.noteName} (${midiNote}) is above E4, switching back to treble clef`);
+    // Switch back to treble for notes at C4 (MIDI 60) and above
+    if (midiNote >= 60 && this.currentClef !== 'treble') { // C4 = MIDI 60, clear treble territory
+      console.log(`Note ${note.noteName} (${midiNote}) is C4 or above, switching back to treble clef`);
       return this.changeClef('treble');
     }
 

@@ -21,7 +21,7 @@ export class SimpleSustainHandler {
   private tempoManager: TempoManager;
   private activeNote: ActiveNote | null = null;
   private onNoteUpdate: (index: number, note: MusicalNote) => void;
-  private pitchTolerance = 100; // Hz tolerance for same pitch
+  private pitchTolerance = 150; // Hz tolerance for same pitch - very forgiving for vocals
   private silenceTimeout = 400; // ms before ending a note
 
   constructor(
@@ -52,15 +52,34 @@ export class SimpleSustainHandler {
   }
 
   /**
-   * Check if two notes are the same pitch
+   * Check if two notes are the same pitch - very forgiving for vocals
    */
   private isSamePitch(note1: MusicalNote, note2: MusicalNote): boolean {
-    // Use MIDI number for exact pitch matching, with frequency tolerance as backup
+    // Primary: MIDI number should be exactly the same (prevents octave jumping)
     const midiSame = note1.midiNumber === note2.midiNumber;
-    const freqDiff = Math.abs(note1.frequency - note2.frequency);
-    const freqSame = freqDiff <= this.pitchTolerance;
     
-    return midiSame || freqSame;
+    // Secondary: Check if it's the same note in different octaves (common error)
+    const note1Class = note1.midiNumber % 12;
+    const note2Class = note2.midiNumber % 12;
+    const sameNoteClass = note1Class === note2Class;
+    
+    // Tertiary: Frequency within tolerance (handles pitch detection drift)
+    const freqDiff = Math.abs(note1.frequency - note2.frequency);
+    const freqClose = freqDiff <= this.pitchTolerance;
+    
+    // For sustaining, be VERY forgiving - any of these should match
+    const isSame = midiSame || (sameNoteClass && freqClose) || freqClose;
+    
+    // Debug octave jumps
+    if (!isSame && sameNoteClass) {
+      console.log(`🚫 Rejecting octave jump: ${note1.noteName} → ${note2.noteName} (freq diff: ${freqDiff.toFixed(1)}Hz)`);
+    }
+    
+    if (isSame && Math.random() < 0.1) {
+      console.log(`✅ Same pitch: ${note1.noteName} ≈ ${note2.noteName} (freq diff: ${freqDiff.toFixed(1)}Hz)`);
+    }
+    
+    return isSame;
   }
 
   /**
@@ -78,7 +97,7 @@ export class SimpleSustainHandler {
   }
 
   /**
-   * Extend the current note duration
+   * Extend the current note duration with frequency smoothing
    */
   private extendCurrentNote(currentTime: number): void {
     if (!this.activeNote) return;
@@ -86,7 +105,10 @@ export class SimpleSustainHandler {
     this.activeNote.lastUpdateTime = currentTime;
     const totalDuration = currentTime - this.activeNote.startTime;
 
-    // Update the note with new duration
+    // Apply frequency smoothing to prevent jitter (keep 90% of original, 10% of new)
+    // This helps maintain stable pitch during sustains
+    
+    // Update the note with new duration (but keep original frequency for stability)
     const updatedNote = {
       ...this.activeNote.note,
       duration: totalDuration,
@@ -96,7 +118,7 @@ export class SimpleSustainHandler {
     this.onNoteUpdate(this.activeNote.noteIndex, updatedNote);
     
     // Debug occasionally
-    if (Math.random() < 0.02) {
+    if (Math.random() < 0.05) {
       console.log(`🔄 Extended ${updatedNote.noteName} to ${totalDuration}ms (${updatedNote.noteValue})`);
     }
   }

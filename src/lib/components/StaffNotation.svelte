@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { pitchResult, notes, isRecording, audioStateActions } from '../stores/audioStore.js';
   import { NoteConverter, type MusicalNote } from '../audio/NoteConverter.js';
-  import { SimpleSustainHandler } from '../audio/SimpleSustainHandler.js';
+  import { RealTimeSustainHandler } from '../audio/RealTimeSustainHandler.js';
   import { RegisterDetector, type ClefType } from '../audio/RegisterDetector.js';
   import { ExportService } from '../export/ExportService.js';
   import type { TempoManager } from '../audio/TempoManager.js';
@@ -25,7 +25,7 @@
   let isPanning = false;
   let panOffset = { x: 0, y: 0 };
   let lastPanPoint = { x: 0, y: 0 };
-  let sustainHandler: SimpleSustainHandler;
+  let sustainHandler: RealTimeSustainHandler;
   
   // Playhead state
   let playheadPosition = { x: 0, y: 0, visible: false };
@@ -110,16 +110,28 @@
     // Initialize register detector
     registerDetector = new RegisterDetector();
   
-  // Reactive: Initialize sustain handler when tempoManager becomes available
+  // Reactive: Initialize real-time sustain handler when tempoManager becomes available
   $: if (tempoManager && !sustainHandler) {
-    console.log('Initializing SimpleSustainHandler with TempoManager');
-    sustainHandler = new SimpleSustainHandler(
+    console.log('Initializing RealTimeSustainHandler with TempoManager');
+    sustainHandler = new RealTimeSustainHandler(
       tempoManager,
       // Callback to update existing note
       (index: number, updatedNote: MusicalNote) => {
         const currentNotes = $notes;
         if (index < currentNotes.length) {
           currentNotes[index] = updatedNote;
+          audioStateActions.setNotes([...currentNotes]);
+        }
+      },
+      // Callback to add new note
+      (note: MusicalNote) => {
+        audioStateActions.addNote(note);
+      },
+      // Callback to remove note (for short notes)
+      (index: number) => {
+        const currentNotes = $notes;
+        if (index < currentNotes.length) {
+          currentNotes.splice(index, 1);
           audioStateActions.setNotes([...currentNotes]);
         }
       }
@@ -174,16 +186,16 @@
   }
   
   
-  // React to pitch changes with simple sustain handling
+  // React to pitch changes with real-time sustain handling
   $: {
     if (sustainHandler) {
-      // Always check for silence gaps to finalize notes
+      // Check for silence to end notes immediately
       sustainHandler.checkForSilence();
       
       // Update playhead based on current active note
       updatePlayhead();
       
-      // Process new pitch data if available - balanced threshold for clean detection
+      // Process new pitch data if available - immediate response
       if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.4) {
         const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
         
@@ -249,7 +261,7 @@
       timestamp: Date.now()
     };
     
-    // Process through sustain handler if available
+    // Process through real-time sustain handler
     if (sustainHandler) {
       const shouldAddNote = sustainHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
       
@@ -273,13 +285,15 @@
   
   // React to recording state changes
   $: if (sustainHandler && !$isRecording) {
-    // If recording stopped, finalize any active notes
-    finalizeActiveNotes();
+    // If recording stopped, force end any active sustains
+    forceEndSustains();
   }
   
-  function finalizeActiveNotes() {
+  function forceEndSustains() {
     if (!sustainHandler) return;
-    sustainHandler.finalize();
+    
+    console.log('🛑 Recording stopped - force ending sustains');
+    sustainHandler.forceEnd();
   }
 
   function clearNotesAndMeasures() {
