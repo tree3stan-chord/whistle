@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { pitchResult, notes, isRecording, audioStateActions } from '../stores/audioStore.js';
   import { NoteConverter, type MusicalNote } from '../audio/NoteConverter.js';
-  import { SustainedNoteHandler } from '../audio/SustainedNoteHandler.js';
+  import { SimpleSustainHandler } from '../audio/SimpleSustainHandler.js';
   import { RegisterDetector, type ClefType } from '../audio/RegisterDetector.js';
   import { ExportService } from '../export/ExportService.js';
   import type { TempoManager } from '../audio/TempoManager.js';
@@ -25,7 +25,7 @@
   let isPanning = false;
   let panOffset = { x: 0, y: 0 };
   let lastPanPoint = { x: 0, y: 0 };
-  let sustainedNoteHandler: SustainedNoteHandler;
+  let sustainHandler: SimpleSustainHandler;
   
   // Playhead state
   let playheadPosition = { x: 0, y: 0, visible: false };
@@ -110,10 +110,11 @@
     // Initialize register detector
     registerDetector = new RegisterDetector();
   
-  // Reactive: Initialize sustained note handler when tempoManager becomes available
-  $: if (tempoManager && !sustainedNoteHandler) {
-    console.log('Initializing SustainedNoteHandler with TempoManager');
-    sustainedNoteHandler = new SustainedNoteHandler(
+  // Reactive: Initialize sustain handler when tempoManager becomes available
+  $: if (tempoManager && !sustainHandler) {
+    console.log('Initializing SimpleSustainHandler with TempoManager');
+    sustainHandler = new SimpleSustainHandler(
+      tempoManager,
       // Callback to update existing note
       (index: number, updatedNote: MusicalNote) => {
         const currentNotes = $notes;
@@ -121,19 +122,6 @@
           currentNotes[index] = updatedNote;
           audioStateActions.setNotes([...currentNotes]);
         }
-      },
-      // Callback to add new note (for ties)
-      (note: MusicalNote) => {
-        audioStateActions.addNote(note);
-      },
-      // Pass tempo manager for tempo-aware durations
-      tempoManager,
-      {
-        pitchTolerance: 120,       // Hz - very forgiving tolerance to prevent note splitting
-        updateInterval: 100,       // Update every 100ms to reduce oversensitivity  
-        silenceThreshold: 500,     // 500ms silence before ending sustained notes
-        confidenceThreshold: 0.3,  // Slightly higher to reduce noise triggering
-        minSustainDuration: 200    // Minimum 200ms before considering a real note
       }
     );
   }
@@ -186,16 +174,16 @@
   }
   
   
-  // React to pitch changes with sustained note handling
+  // React to pitch changes with simple sustain handling
   $: {
-    if (sustainedNoteHandler) {
-      // Always check for silence/timeout updates
-      sustainedNoteHandler.checkForUpdates();
+    if (sustainHandler) {
+      // Always check for silence gaps to finalize notes
+      sustainHandler.checkForSilence();
       
       // Update playhead based on current active note
       updatePlayhead();
       
-      // Process new pitch data if available - balanced threshold for sustained notes
+      // Process new pitch data if available - balanced threshold for clean detection
       if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.4) {
         const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
         
@@ -261,11 +249,11 @@
       timestamp: Date.now()
     };
     
-    // Process through sustained note handler if available
-    if (sustainedNoteHandler) {
-      const shouldAddNote = sustainedNoteHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
+    // Process through sustain handler if available
+    if (sustainHandler) {
+      const shouldAddNote = sustainHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
       
-      // Only add as new note if not extending an existing sustained note
+      // Only add as new note if not extending an existing note
       if (shouldAddNote) {
         audioStateActions.addNote(noteWithCorrectStaffPosition);
         currentActiveNoteIndex = $notes.length; // Track the new note as active
@@ -274,7 +262,7 @@
         currentActiveNoteIndex = $notes.length - 1;
       }
     } else {
-      // Fallback: add note directly if sustainedNoteHandler not ready
+      // Fallback: add note directly if sustainHandler not ready
       audioStateActions.addNote(noteWithCorrectStaffPosition);
       currentActiveNoteIndex = $notes.length;
     }
@@ -284,14 +272,14 @@
   }
   
   // React to recording state changes
-  $: if (sustainedNoteHandler && !$isRecording) {
-    // If recording stopped, finalize any sustained notes
+  $: if (sustainHandler && !$isRecording) {
+    // If recording stopped, finalize any active notes
     finalizeActiveNotes();
   }
   
   function finalizeActiveNotes() {
-    if (!sustainedNoteHandler) return;
-    sustainedNoteHandler.finalize();
+    if (!sustainHandler) return;
+    sustainHandler.finalize();
   }
 
   function clearNotesAndMeasures() {
