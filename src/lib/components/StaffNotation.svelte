@@ -32,9 +32,9 @@
   let currentActiveNoteIndex = -1;
   let registerDetector: RegisterDetector;
   let currentClef: ClefType = 'treble';
-  let measuredClefChanges: Map<number, ClefType> = new Map(); // Track clef changes by measure
   let currentMeasure = 1;
   let notesInCurrentMeasure = 0;
+  let measuredClefChanges = new Map<number, ClefType>();
   const NOTES_PER_MEASURE = 4; // 4/4 time signature
   const MEASURES_PER_LINE = 4; // 4 measures per staff line
   const STAFF_LINE_HEIGHT = 120; // Vertical space between staff systems
@@ -74,6 +74,10 @@
     updateResponsiveDimensions();
     
     if (canvas) {
+      // Ensure canvas dimensions are set properly
+      canvas.width = responsiveWidth;
+      canvas.height = responsiveHeight;
+      
       ctx = canvas.getContext('2d')!;
       drawStaff();
       startAnimation();
@@ -215,42 +219,29 @@
   }
   
   function processRawNote(rawNote: MusicalNote) {
-    // Track measures
-    notesInCurrentMeasure++;
-    if (notesInCurrentMeasure > NOTES_PER_MEASURE) {
-      currentMeasure++;
-      notesInCurrentMeasure = 1;
-    }
+    // Only update measure counter if we're actually adding a new note (not extending)
+    // This is more compatible with sustain detection
     
     // Analyze register and potentially queue clef change
     if (registerDetector) {
       const suggestedClef = registerDetector.analyzeNote(rawNote);
       
-      // If at start of measure, apply any queued clef change
-      if (notesInCurrentMeasure === 1 && measuredClefChanges.has(currentMeasure)) {
-        const newClef = measuredClefChanges.get(currentMeasure)!;
-        if (newClef !== currentClef) {
-          currentClef = newClef;
-          console.log(`Cadenza: Clef changed to ${currentClef} at measure ${currentMeasure}`);
-          
-          // Recalculate all existing notes for new clef
-          if ($notes.length > 0) {
-            const updatedNotes = $notes.map(note => ({
-              ...note,
-              staffPosition: calculateStaffPosition(note, currentClef)
-            }));
-            audioStateActions.setNotes(updatedNotes);
-          }
-          
-          // Force redraw to show new clef and repositioned notes
-          drawStaff();
-          measuredClefChanges.delete(currentMeasure); // Remove processed change
+      // Apply clef change immediately if needed (simplified logic)
+      if (suggestedClef !== currentClef) {
+        currentClef = suggestedClef;
+        console.log(`Cadenza: Clef changed to ${currentClef}`);
+        
+        // Recalculate all existing notes for new clef
+        if ($notes.length > 0) {
+          const updatedNotes = $notes.map(note => ({
+            ...note,
+            staffPosition: calculateStaffPosition(note, currentClef)
+          }));
+          audioStateActions.setNotes(updatedNotes);
         }
-      }
-      // If mid-measure and clef should change, queue it for next measure
-      else if (suggestedClef !== currentClef && !measuredClefChanges.has(currentMeasure + 1)) {
-        console.log(`Cadenza: Queuing clef change to ${suggestedClef} for measure ${currentMeasure + 1}`);
-        measuredClefChanges.set(currentMeasure + 1, suggestedClef);
+        
+        // Force redraw to show new clef and repositioned notes
+        drawStaff();
       }
     }
     
@@ -267,6 +258,13 @@
       
       // Only add as new note if not extending an existing note
       if (shouldAddNote) {
+        // Track measures only when adding new notes
+        notesInCurrentMeasure++;
+        if (notesInCurrentMeasure > NOTES_PER_MEASURE) {
+          currentMeasure++;
+          notesInCurrentMeasure = 1;
+        }
+        
         audioStateActions.addNote(noteWithCorrectStaffPosition);
         currentActiveNoteIndex = $notes.length; // Track the new note as active
       } else {
@@ -275,6 +273,12 @@
       }
     } else {
       // Fallback: add note directly if sustainHandler not ready
+      notesInCurrentMeasure++;
+      if (notesInCurrentMeasure > NOTES_PER_MEASURE) {
+        currentMeasure++;
+        notesInCurrentMeasure = 1;
+      }
+      
       audioStateActions.addNote(noteWithCorrectStaffPosition);
       currentActiveNoteIndex = $notes.length;
     }
@@ -303,7 +307,6 @@
     // Reset measure tracking
     currentMeasure = 1;
     notesInCurrentMeasure = 0;
-    measuredClefChanges.clear();
     
     // Reset clef to default
     currentClef = 'treble';
@@ -342,9 +345,13 @@
       return;
     }
 
-    // Calculate which measure and position within measure for the active note
-    const measureNum = Math.floor(currentActiveNoteIndex / NOTES_PER_MEASURE) + 1;
-    const noteInMeasure = currentActiveNoteIndex % NOTES_PER_MEASURE;
+    // Simplified playhead positioning based on note index
+    const totalNotes = Math.max($notes.length, 1);
+    const notePosition = Math.max(currentActiveNoteIndex, 0);
+    
+    // Calculate approximate measure and position (simplified)
+    const measureNum = Math.floor(notePosition / NOTES_PER_MEASURE) + 1;
+    const noteInMeasure = notePosition % NOTES_PER_MEASURE;
     
     // Calculate which staff line this measure is on
     const lineIndex = Math.floor((measureNum - 1) / MEASURES_PER_LINE);
@@ -595,16 +602,7 @@
     ctx.fillStyle = '#666666';
     ctx.textAlign = 'left';
     ctx.fillText(`Measure ${currentMeasure}`, 10, 30);
-    
-    // Show notes in current measure
     ctx.fillText(`${notesInCurrentMeasure}/${NOTES_PER_MEASURE}`, 10, 50);
-    
-    // Show pending clef changes
-    if (measuredClefChanges.has(currentMeasure + 1)) {
-      const nextClef = measuredClefChanges.get(currentMeasure + 1)!;
-      ctx.fillStyle = '#FF9800'; // Orange for pending changes
-      ctx.fillText(`Next: ${nextClef} clef`, 10, 70);
-    }
     
     ctx.textAlign = 'center'; // Reset alignment
   }

@@ -56,15 +56,20 @@ export const modalActions = {
     const savedPosition = this.loadModalPosition(config.id);
     const position = savedPosition || config.initialPosition;
     
+    // Get default visibility for this modal
+    const defaultVisibility = getDefaultModalVisibility();
+    const isVisible = defaultVisibility[config.id] !== undefined ? defaultVisibility[config.id] : true;
+    
     modalStates.update(states => {
       states[config.id] = {
         id: config.id,
         position,
         zIndex: currentMaxZIndex++,
         isMinimized: false,
-        isVisible: true,
+        isVisible,
         size: config.defaultSize
       };
+      
       return states;
     });
   },
@@ -112,9 +117,11 @@ export const modalActions = {
    * Show/hide modal
    */
   setVisible(modalId: string, visible: boolean): void {
+    
     modalStates.update(states => {
       if (states[modalId]) {
         states[modalId].isVisible = visible;
+        
       }
       return states;
     });
@@ -247,6 +254,17 @@ export function getDefaultModalPositions() {
     'status-monitor': { x: window.innerWidth - 320, y: 80 },
     'session-manager': { x: 20, y: window.innerHeight - 200 },
     'lyrics-panel': { x: window.innerWidth - 320, y: window.innerHeight - 200 },
+    'tempo-control': { x: window.innerWidth / 2 - 150, y: 200 },
     'settings-panel': { x: window.innerWidth / 2 - 150, y: 120 }
+  };
+}
+
+export function getDefaultModalVisibility() {
+  return {
+    'recording-control': true,   // Visible by default
+    'session-manager': true,     // Visible by default
+    'status-monitor': false,     // Hidden by default
+    'lyrics-panel': false,       // Hidden by default
+    'tempo-control': false       // Hidden by default
   };
 }

@@ -27,66 +27,6 @@
   onMount(() => {
     mounted = true;
     audioService = new AudioService();
-    
-    // Initialize modal positions
-    const defaultPositions = getDefaultModalPositions();
-    
-    // FORCE CLEAR any saved recording-control state that might be hiding it
-    modalActions.removeFromStorage('recording-control');
-    
-    // Register all modals explicitly to ensure proper initialization
-    modalActions.registerModal({
-      id: 'recording-control',
-      title: 'Recording Control',
-      initialPosition: defaultPositions['recording-control'],
-      minimizable: true,
-      persistent: true
-    });
-    
-    // FORCE recording control to be visible immediately
-    modalActions.setVisible('recording-control', true);
-    
-    modalActions.registerModal({
-      id: 'tempo-control',
-      title: 'Tempo & Rhythm',
-      initialPosition: defaultPositions['tempo-control'],
-      minimizable: true,
-      persistent: true
-    });
-    
-    modalActions.registerModal({
-      id: 'status-monitor',
-      title: 'Status Monitor',
-      initialPosition: defaultPositions['status-monitor'],
-      minimizable: true,
-      persistent: true
-    });
-    
-    modalActions.registerModal({
-      id: 'session-manager',
-      title: 'Session Manager',
-      initialPosition: defaultPositions['session-manager'],
-      minimizable: true,
-      persistent: true
-    });
-    
-    modalActions.registerModal({
-      id: 'lyrics-panel',
-      title: 'Lyrics',
-      initialPosition: defaultPositions['lyrics-panel'],
-      minimizable: true,
-      persistent: true
-    });
-    
-    // Let modals use their default visibility from registration
-    // Recording control and session manager should be visible by default
-    setTimeout(() => {
-      console.log('Setting non-default modal visibility...');
-      modalActions.setVisible('status-monitor', false);     // Hide by default
-      modalActions.setVisible('lyrics-panel', false);       // Hide by default
-      modalActions.setVisible('tempo-control', false);      // Hide by default
-      console.log('Modal visibility set complete');
-    }, 200);
   });
 
   onDestroy(async () => {
@@ -206,13 +146,14 @@
   </div>
 
   <!-- Recording Control Modal -->
-  <DraggableModal config={{
-    id: 'recording-control',
-    title: 'Recording Control',
-    initialPosition: { x: 20, y: 80 },
-    minimizable: true,
-    persistent: true
-  }}>
+  {#if mounted}
+    <DraggableModal config={{
+      id: 'recording-control',
+      title: 'Recording Control',
+      initialPosition: { x: 20, y: 80 },
+      minimizable: true,
+      persistent: true
+    }}>
     <div class="recording-controls">
       {#if isInitialized}
         {#if !isRecording}
@@ -249,7 +190,8 @@
         </div>
       {/if}
     </div>
-  </DraggableModal>
+    </DraggableModal>
+  {/if}
 
   <!-- Status Monitor Modal -->
   <DraggableModal config={{

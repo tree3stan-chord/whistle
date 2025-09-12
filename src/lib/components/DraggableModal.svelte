@@ -16,13 +16,14 @@
     position: config.initialPosition, 
     zIndex: 1000, 
     isMinimized: false, 
-    isVisible: true 
+    isVisible: false  // Start hidden until properly registered
   };
 
   // Subscribe to modal store for this specific modal
   $: {
     if ($modalStates[config.id]) {
       modalState = $modalStates[config.id];
+      
     } else {
       // If modal not found in store, ensure it gets registered
       console.warn(`Modal ${config.id} not found in store, attempting registration`);
@@ -31,7 +32,8 @@
   }
 
   onMount(() => {
-    // Modal should already be registered by parent component
+    // Ensure the modal is registered
+    modalActions.registerModal(config);
   });
 
 
@@ -40,40 +42,27 @@
   });
 
   function startDrag(event: MouseEvent | TouchEvent) {
-    console.log('startDrag called, modalElement:', modalElement);
-    
-    // Find the modal element from the event target
-    let targetElement = event.target as HTMLElement;
-    let modal = targetElement.closest('.draggable-modal') as HTMLElement;
-    
-    if (!modal) {
-      console.error('Could not find modal element');
+    if (!modalElement) {
+      console.error('Modal element not bound, cannot start drag');
       return;
     }
     
-    // Update the modalElement reference if it's not bound
-    if (!modalElement) {
-      modalElement = modal as HTMLDivElement;
-    }
-    
     isDragging = true;
-    modal.style.userSelect = 'none';
+    modalElement.style.userSelect = 'none';
     
     const clientPos = getClientPosition(event);
-    const rect = modal.getBoundingClientRect();
+    const rect = modalElement.getBoundingClientRect();
     
     dragOffset = {
       x: clientPos.x - rect.left,
       y: clientPos.y - rect.top
     };
     
-    console.log('Start drag:', { clientPos, rect, dragOffset, modalId: config.id });
-    
     // Bring to front when starting drag
     modalActions.bringToFront(config.id);
     
     // Add dragging class for visual feedback
-    modal.classList.add('dragging');
+    modalElement.classList.add('dragging');
     
     // Add document event listeners for drag
     document.addEventListener('mousemove', handleDrag);
@@ -85,15 +74,15 @@
   }
 
   function handleDrag(event: MouseEvent | TouchEvent) {
-    if (!isDragging) return;
+    if (!isDragging || !modalElement) {
+      return;
+    }
     
     const clientPos = getClientPosition(event);
     const newPosition = {
       x: clientPos.x - dragOffset.x,
       y: clientPos.y - dragOffset.y
     };
-    
-    console.log('Handle drag:', { clientPos, newPosition, isDragging });
     
     // Constrain to viewport
     const modalSize = {
@@ -102,9 +91,14 @@
     };
     
     const constrainedPosition = constrainToViewport(newPosition, modalSize);
-    console.log('Constrained position:', constrainedPosition);
     
-    // Update position in store
+    // Update local modalState immediately for visual feedback
+    modalState = {
+      ...modalState,
+      position: constrainedPosition
+    };
+    
+    // Update position in store (for persistence and other components)
     modalActions.updatePosition(config.id, constrainedPosition);
     
     event.preventDefault();
