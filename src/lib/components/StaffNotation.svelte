@@ -30,6 +30,11 @@
   // Playhead state
   let playheadPosition = { x: 0, y: 0, visible: false };
   let currentActiveNoteIndex = -1;
+  
+  // Time-based playhead tracking
+  let recordingStartTime = 0;
+  let playheadAnimationId: number | null = null;
+  let currentBeat = 0;
   let registerDetector: RegisterDetector;
   let currentClef: ClefType = 'treble';
   let currentMeasure = 1;
@@ -61,7 +66,7 @@
     const baseHeight = 600; // Reference height
     const widthScale = responsiveWidth / baseWidth;
     const heightScale = responsiveHeight / baseHeight;
-    const scaleFactor = Math.min(widthScale, heightScale, 2.0); // Cap scaling at 2x
+    const scaleFactor = Math.min(widthScale, heightScale, 2.0) * 0.85; // Reduce scale by 15% for better fit
     
     STAFF_MARGIN = Math.max(50 * scaleFactor, 40);
     LINE_SPACING = Math.max(12 * scaleFactor, 10);
@@ -266,7 +271,8 @@
         }
         
         audioStateActions.addNote(noteWithCorrectStaffPosition);
-        currentActiveNoteIndex = $notes.length; // Track the new note as active
+        currentActiveNoteIndex = $notes.length - 1; // Index of the note just added
+        updatePlayhead();
       } else {
         // We're extending an existing note, so the active note is the last one
         currentActiveNoteIndex = $notes.length - 1;
@@ -280,7 +286,8 @@
       }
       
       audioStateActions.addNote(noteWithCorrectStaffPosition);
-      currentActiveNoteIndex = $notes.length;
+      currentActiveNoteIndex = $notes.length - 1; // Index of the note just added
+      updatePlayhead();
     }
     
     // Allow unlimited notes for proper musical transcription
@@ -375,6 +382,93 @@
     playheadPosition.x = noteX;
     playheadPosition.y = staffY;
     playheadPosition.visible = true;
+  }
+
+  /**
+   * Start time-based playhead advancement
+   */
+  function startTimeBasedPlayhead() {
+    recordingStartTime = Date.now();
+    currentBeat = 0;
+    playheadPosition.visible = true;
+    animatePlayhead();
+  }
+  
+  /**
+   * Stop time-based playhead advancement
+   */
+  function stopTimeBasedPlayhead() {
+    if (playheadAnimationId) {
+      cancelAnimationFrame(playheadAnimationId);
+      playheadAnimationId = null;
+    }
+    playheadPosition.visible = false;
+  }
+  
+  /**
+   * Animate playhead based on elapsed time and BPM
+   */
+  function animatePlayhead() {
+    if (!$isRecording) {
+      stopTimeBasedPlayhead();
+      return;
+    }
+    
+    // Calculate elapsed time and current beat position
+    const elapsedMs = Date.now() - recordingStartTime;
+    const bpm = tempoManager?.getCurrentBPM() || 120;
+    const timeSignature = tempoManager?.getTimeSignature() || { numerator: 4, denominator: 4 };
+    const beatsPerMs = bpm / (60 * 1000);
+    currentBeat = elapsedMs * beatsPerMs;
+    
+    // Calculate position on staff
+    updatePlayheadFromBeat(currentBeat);
+    
+    // Continue animation
+    playheadAnimationId = requestAnimationFrame(animatePlayhead);
+  }
+  
+  /**
+   * Update playhead position based on current beat
+   */
+  function updatePlayheadFromBeat(beat: number) {
+    // Get current time signature
+    const timeSignature = tempoManager?.getTimeSignature() || { numerator: 4, denominator: 4 };
+    const beatsPerMeasure = timeSignature.numerator;
+    
+    // Calculate measure and beat within measure
+    const measureNum = Math.floor(beat / beatsPerMeasure) + 1;
+    const beatInMeasure = beat % beatsPerMeasure;
+    
+    // Calculate which staff line this measure is on
+    const lineIndex = Math.floor((measureNum - 1) / MEASURES_PER_LINE);
+    const measureInLine = ((measureNum - 1) % MEASURES_PER_LINE);
+    
+    // Calculate X position based on time, not notes
+    const currentWidth = responsiveWidth || width;
+    const clefSpacing = CLEF_FONT_SIZE * 2.0;
+    const staffStart = STAFF_MARGIN + clefSpacing;
+    const staffEnd = currentWidth - STAFF_MARGIN;
+    const availableWidth = staffEnd - staffStart;
+    const measureWidth = availableWidth / MEASURES_PER_LINE;
+    const measureStart = staffStart + (measureInLine * measureWidth);
+    const beatSpacing = measureWidth / beatsPerMeasure;
+    const playheadX = measureStart + (beatInMeasure * beatSpacing);
+    
+    // Calculate Y position (staff line)
+    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
+    
+    // Update playhead position
+    playheadPosition.x = playheadX;
+    playheadPosition.y = staffY;
+    playheadPosition.visible = true;
+  }
+  
+  /**
+   * Get current playhead time position for note placement
+   */
+  function getCurrentPlayheadTime(): number {
+    return currentBeat;
   }
   
   function drawStaff() {

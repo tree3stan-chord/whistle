@@ -3,7 +3,7 @@
   import { modalActions, modalStates } from '../stores/modalStore.js';
   
   // Position state
-  let position = { x: 20, y: 20 };
+  let position = { x: 20, y: 80 }; // Start below navbar (60px) with some margin
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
   let toolboxElement: HTMLDivElement;
