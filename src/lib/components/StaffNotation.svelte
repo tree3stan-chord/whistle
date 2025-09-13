@@ -206,9 +206,11 @@
       
       // Process new pitch data if available - immediate response
       if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.4) {
+        console.log('Pitch detected:', $pitchResult.frequency, 'Hz, confidence:', $pitchResult.confidence);
         const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
         
         if (NoteConverter.isVocalRange(rawNote.frequency)) {
+          console.log('Processing note:', rawNote.note + rawNote.octave, 'MIDI:', rawNote.midiNumber, 'Freq:', rawNote.frequency.toFixed(1) + 'Hz');
           processRawNote(rawNote);
         }
       }
@@ -244,37 +246,37 @@
     if (registerDetector) {
       const suggestedClef = registerDetector.analyzeNote(rawNote);
       
-      // Apply clef change immediately if needed (simplified logic)
+      // Apply clef change ONLY for subsequent notes (localized)
       if (suggestedClef !== currentClef) {
+        console.log(`Cadenza: Clef changed from ${currentClef} to ${suggestedClef} at note ${$notes.length}`);
+        
+        // Record the clef change position for rendering
+        const currentMeasurePosition = Math.floor($notes.length / NOTES_PER_MEASURE) + 1;
+        measuredClefChanges.set(currentMeasurePosition, suggestedClef);
+        
+        // Update current clef for subsequent notes only
         currentClef = suggestedClef;
-        console.log(`Cadenza: Clef changed to ${currentClef}`);
         
-        // Recalculate all existing notes for new clef
-        if ($notes.length > 0) {
-          const updatedNotes = $notes.map(note => ({
-            ...note,
-            staffPosition: calculateStaffPosition(note, currentClef)
-          }));
-          audioStateActions.setNotes(updatedNotes);
-        }
-        
-        // Force redraw to show new clef and repositioned notes
+        // Force redraw to show new clef symbol at change point
         drawStaff();
       }
     }
     
-    // Recalculate staff position for current clef
+    // Recalculate staff position for current clef and store clef with note
     const noteWithCorrectStaffPosition = {
       ...rawNote,
       staffPosition: calculateStaffPosition(rawNote, currentClef),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      clef: currentClef, // Store the clef that was active when this note was created
+      noteIndex: $notes.length // Store position for clef change tracking
     };
     
     // Process through real-time sustain handler
     if (sustainHandler) {
       const shouldAddNote = sustainHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
       
-      // Only add as new note if not extending an existing note
+      // The sustain handler manages note additions and updates via its callbacks
+      // We just need to track measures and playhead
       if (shouldAddNote) {
         // Track measures only when adding new notes
         notesInCurrentMeasure++;
@@ -283,12 +285,15 @@
           notesInCurrentMeasure = 1;
         }
         
-        audioStateActions.addNote(noteWithCorrectStaffPosition);
-        currentActiveNoteIndex = $notes.length - 1; // Index of the note just added
-        updatePlayhead();
+        // Note is added by sustainHandler's onNoteAdd callback
+        setTimeout(() => {
+          currentActiveNoteIndex = $notes.length - 1; // Index of the note just added
+          updatePlayhead();
+        }, 0);
       } else {
         // We're extending an existing note, so the active note is the last one
         currentActiveNoteIndex = $notes.length - 1;
+        updatePlayhead(); // Update playhead for sustained note
       }
     } else {
       // Fallback: add note directly if sustainHandler not ready
@@ -429,8 +434,8 @@
     
     // Calculate elapsed time and current beat position
     const elapsedMs = Date.now() - recordingStartTime;
-    const bpm = tempoManager?.getCurrentBPM() || 120;
-    const timeSignature = tempoManager?.getTimeSignature() || { numerator: 4, denominator: 4 };
+    // Temporarily use fixed BPM until TempoManager interface is fixed
+    const bpm = 120;
     const beatsPerMs = bpm / (60 * 1000);
     currentBeat = elapsedMs * beatsPerMs;
     
@@ -445,9 +450,8 @@
    * Update playhead position based on current beat
    */
   function updatePlayheadFromBeat(beat: number) {
-    // Get current time signature
-    const timeSignature = tempoManager?.getTimeSignature() || { numerator: 4, denominator: 4 };
-    const beatsPerMeasure = timeSignature.numerator;
+    // Use fixed 4/4 time signature until TempoManager interface is fixed
+    const beatsPerMeasure = 4;
     
     // Calculate measure and beat within measure
     const measureNum = Math.floor(beat / beatsPerMeasure) + 1;
@@ -577,12 +581,14 @@
     drawMeasureBars(lineIndex, staffY, staffStart, staffEnd);
   }
 
-  function drawClefSymbol(x: number, staffY: number, clef?: ClefType) {
+  function drawClefSymbol(x: number, staffY: number, clef?: ClefType, scale: number = 1.0) {
     if (!ctx) return;
     
     const clefToUse = clef || currentClef;
     
-    ctx.font = `${CLEF_FONT_SIZE}px serif`;
+    // Scale the font size for different contexts (main clef vs change clef)
+    const scaledClefSize = CLEF_FONT_SIZE * scale;
+    ctx.font = `${scaledClefSize}px serif`;
     ctx.fillStyle = '#000000';
     
     // Set text alignment for better centering with larger clefs
@@ -681,8 +687,26 @@
     
     notesInMeasure.forEach(({ note, index }, noteIndex) => {
       const x = measureStart + (noteIndex * noteSpacing) + (noteSpacing / 2);
-      const y = staffY - (note.staffPosition * LINE_SPACING / 2);
       
+      // Check if this note starts a clef change
+      const noteClef = note.clef || 'treble'; // Default to treble for backward compatibility
+      const prevNote = index > 0 ? $notes[index - 1] : null;
+      const prevClef = prevNote?.clef || 'treble';
+      
+      // If clef changed, draw a small clef symbol before this note
+      if (noteClef !== prevClef && noteIndex === 0) {
+        const clefSymbolX = measureStart - (noteSpacing * 0.3);
+        drawClefSymbol(clefSymbolX, staffY, noteClef, 0.6); // Smaller clef for mid-staff changes
+      }
+      
+      // Use the note's stored staff position (calculated with its original clef)
+      // If no clef is stored, recalculate with current clef for backward compatibility
+      let staffPosition = note.staffPosition;
+      if (!note.clef) {
+        staffPosition = calculateStaffPosition(note, noteClef);
+      }
+      
+      const y = staffY - (staffPosition * LINE_SPACING / 2);
       
       // Calculate width based on note duration
       const noteWidth = Math.min(calculateNoteWidth(note), noteSpacing * 0.8);
@@ -928,18 +952,28 @@
     // Calculate staff position relative to the current clef
     const midiNumber = note.midiNumber;
     
-    // Reference MIDI numbers for middle line of each clef
-    const clefReferences = {
-      treble: 71,  // B4 (middle line of treble staff)
-      alto: 60,    // C4 (middle line of alto staff)  
-      bass: 50     // D3 (middle line of bass staff)
-    };
+    // Staff positions are integers where:
+    // 0 = middle line of staff
+    // positive = above middle line
+    // negative = below middle line
+    // Each line/space is 1 position (not 2 semitones as incorrectly calculated before)
     
-    const referenceMidi = clefReferences[clef];
+    if (clef === 'treble') {
+      // Treble clef: B4 (MIDI 71) is the middle line (position 0)
+      // Each semitone step changes staff position by 0.5 (line to space or space to line)
+      const middleLineMidi = 71; // B4
+      return (midiNumber - middleLineMidi) * 0.5;
+    } else if (clef === 'bass') {
+      // Bass clef: D3 (MIDI 50) is the middle line (position 0)  
+      const middleLineMidi = 50; // D3
+      return (midiNumber - middleLineMidi) * 0.5;
+    } else if (clef === 'alto') {
+      // Alto clef: C4 (MIDI 60) is the middle line (position 0)
+      const middleLineMidi = 60; // C4
+      return (midiNumber - middleLineMidi) * 0.5;
+    }
     
-    // Calculate position relative to middle line (0 = middle line)
-    // Positive = above middle line, negative = below
-    return (midiNumber - referenceMidi) / 2;  // Each staff line is 2 semitones
+    return 0;
   }
 
   

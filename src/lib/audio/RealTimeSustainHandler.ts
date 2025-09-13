@@ -153,6 +153,9 @@ export class RealTimeSustainHandler {
     };
 
     console.log(`🎵 START SUSTAIN: ${note.noteName} at index ${noteIndex}`);
+    
+    // Actually add the note to the score via callback
+    this.onNoteAdd(note);
   }
 
   /**
