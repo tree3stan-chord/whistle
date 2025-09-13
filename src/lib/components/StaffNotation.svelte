@@ -68,7 +68,7 @@
     const heightScale = responsiveHeight / baseHeight;
     const scaleFactor = Math.min(widthScale, heightScale, 2.0) * 0.85; // Reduce scale by 15% for better fit
     
-    STAFF_MARGIN = Math.max(50 * scaleFactor, 40);
+    STAFF_MARGIN = Math.max(70 * scaleFactor, 60); // Increased margin for clef space
     LINE_SPACING = Math.max(12 * scaleFactor, 10);
     NOTE_RADIUS = Math.max(4 * scaleFactor, 3);
     NOTE_SPACING = Math.max(20 * scaleFactor, 16);
@@ -217,8 +217,21 @@
 
   // React to recording state for playhead visibility
   $: {
-    playheadPosition.visible = $isRecording;
-    if (!$isRecording) {
+    if ($isRecording) {
+      // Start time-based playhead animation
+      if (!playheadAnimationId) {
+        recordingStartTime = Date.now();
+        currentBeat = 0;
+        playheadPosition.visible = true;
+        animatePlayhead();
+      }
+    } else {
+      // Stop time-based playhead animation
+      if (playheadAnimationId) {
+        cancelAnimationFrame(playheadAnimationId);
+        playheadAnimationId = null;
+      }
+      playheadPosition.visible = false;
       currentActiveNoteIndex = -1;
     }
   }
@@ -557,8 +570,8 @@
       }
     }
     
-    // Draw clef symbol for this line
-    drawClefSymbol(staffStart + 10, staffY, clefForLine);
+    // Draw clef symbol for this line with better positioning
+    drawClefSymbol(staffStart + 25, staffY, clefForLine);
     
     // Draw measure bars with increased spacing after clef
     drawMeasureBars(lineIndex, staffY, staffStart, staffEnd);
@@ -604,7 +617,7 @@
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     
-    const clefSpacing = CLEF_FONT_SIZE * 2.0; // Adequate spacing for large clef
+    const clefSpacing = CLEF_FONT_SIZE * 1.5; // Adjusted spacing for better measure distribution
     const availableWidth = staffEnd - staffStart - clefSpacing;
     const measureWidth = availableWidth / MEASURES_PER_LINE;
     
