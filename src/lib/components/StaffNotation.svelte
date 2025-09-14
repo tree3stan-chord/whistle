@@ -276,6 +276,19 @@
     const staffPosition = calculateStaffPosition(rawNote, clef);
 
     // Check if this continues the current sustain
+    console.log('🔍 Sustain check:', {
+      hasCurrentSustainNote: !!currentSustainNote,
+      currentSustainNote: currentSustainNote ? {
+        noteName: currentSustainNote.noteName,
+        frequency: currentSustainNote.frequency.toFixed(1)
+      } : null,
+      newRawNote: {
+        noteName: rawNote.noteName,
+        frequency: rawNote.frequency.toFixed(1)
+      },
+      isSamePitchResult: currentSustainNote ? isSamePitch(rawNote, currentSustainNote) : false
+    });
+
     if (currentSustainNote && isSamePitch(rawNote, currentSustainNote)) {
       // Extend existing note duration
       const sustainDuration = now - sustainStartTime;
@@ -643,8 +656,8 @@
       // Calculate Y position based on staff position
       const y = staffY - (note.staffPosition * 6); // 6px per staff position
 
-      // Debug note positioning
-      if (index === $notes.length - 1) { // Only log the latest note
+      // Debug note positioning (temporarily disabled to reduce spam)
+      if (false && index === $notes.length - 1) { // Only log the latest note
         console.log('🎨 Drawing note:', {
           index,
           noteName: note.noteName,
