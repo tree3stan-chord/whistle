@@ -673,7 +673,9 @@
       ctx.fillText('𝄢', 80, staffY + 12); // Center on F line at staffY + 12
     } else {
       // Treble clef symbol positioned on G line (2nd line from bottom)
-      ctx.fillText('𝄞', 80, staffY - 12); // Center on G line at staffY - 12
+      // Since calculateStaffPosition uses B4 as middle line (position 0), and G4 is -2 positions from B4
+      // G4 should be 2 lines below the middle: staffY + 24 (2 * 12px line spacing)
+      ctx.fillText('𝄞', 80, staffY + 12); // Position on G line
     }
   }
   
@@ -792,9 +794,9 @@
     switch (clefToUse) {
       case 'treble':
         // Treble clef centers on G4 line (2nd line from bottom)
-        // Staff lines: staffY-2*LINE_SPACING, staffY-LINE_SPACING, staffY, staffY+LINE_SPACING, staffY+2*LINE_SPACING
-        // G line is the 2nd from bottom = staffY-LINE_SPACING
-        ctx.fillText('𝄞', x, staffY - LINE_SPACING);
+        // Since calculateStaffPosition uses B4 as middle line (position 0 = staffY), and G4 is -2 positions from B4
+        // G4 should be at staffY + LINE_SPACING (since G4 is one line below middle B4)
+        ctx.fillText('𝄞', x, staffY + LINE_SPACING);
         break;
       case 'bass':
         // Bass clef centers on F line (2nd line from bottom, -LINE_SPACING from center)
