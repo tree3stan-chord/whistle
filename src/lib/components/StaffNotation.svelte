@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { pitchResult, notes, isRecording, audioStateActions } from '../stores/audioStore.js';
   import { NoteConverter, type MusicalNote } from '../audio/NoteConverter.js';
-  import { RealTimeSustainHandler } from '../audio/RealTimeSustainHandler.js';
+  import { SimpleTranscriptionEngine } from '../audio/SimpleTranscriptionEngine.js';
   import { RegisterDetector, type ClefType } from '../audio/RegisterDetector.js';
   import { ExportService } from '../export/ExportService.js';
   import type { TempoManager } from '../audio/TempoManager.js';
@@ -25,7 +25,7 @@
   let isPanning = false;
   let panOffset = { x: 0, y: 0 };
   let lastPanPoint = { x: 0, y: 0 };
-  let sustainHandler: RealTimeSustainHandler;
+  let transcriptionEngine: SimpleTranscriptionEngine;
   
   // Playhead state
   let playheadPosition = { x: 0, y: 0, visible: false };
@@ -119,32 +119,10 @@
     // Initialize register detector
     registerDetector = new RegisterDetector();
   
-  // Reactive: Initialize real-time sustain handler when tempoManager becomes available
-  $: if (tempoManager && !sustainHandler) {
-    console.log('Initializing RealTimeSustainHandler with TempoManager');
-    sustainHandler = new RealTimeSustainHandler(
-      tempoManager,
-      // Callback to update existing note
-      (index: number, updatedNote: MusicalNote) => {
-        const currentNotes = $notes;
-        if (index < currentNotes.length) {
-          currentNotes[index] = updatedNote;
-          audioStateActions.setNotes([...currentNotes]);
-        }
-      },
-      // Callback to add new note
-      (note: MusicalNote) => {
-        audioStateActions.addNote(note);
-      },
-      // Callback to remove note (for short notes)
-      (index: number) => {
-        const currentNotes = $notes;
-        if (index < currentNotes.length) {
-          currentNotes.splice(index, 1);
-          audioStateActions.setNotes([...currentNotes]);
-        }
-      }
-    );
+  // Initialize simple transcription engine when tempoManager becomes available
+  $: if (tempoManager && !transcriptionEngine) {
+    console.log('Initializing SimpleTranscriptionEngine with TempoManager');
+    transcriptionEngine = new SimpleTranscriptionEngine(tempoManager);
   }
   
   onDestroy(() => {
@@ -195,32 +173,34 @@
   }
   
   
-  // React to pitch changes with real-time sustain handling
+  // Debug real-time pitch detection
   $: {
-    if (sustainHandler) {
-      // Check for silence to end notes immediately
-      sustainHandler.checkForSilence();
-      
-      // Update playhead based on current active note
-      updatePlayhead();
-      
-      // Process new pitch data if available - immediate response
-      if ($pitchResult && $pitchResult.frequency && $pitchResult.confidence > 0.4) {
-        console.log('Pitch detected:', $pitchResult.frequency, 'Hz, confidence:', $pitchResult.confidence);
+    if ($isRecording && $pitchResult) {
+      console.log('🎤 Pitch detected:', $pitchResult.frequency?.toFixed(1) + 'Hz', 'confidence:', $pitchResult.confidence?.toFixed(3));
+
+      if ($pitchResult.frequency && $pitchResult.confidence > 0.4) {
         const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
-        
+        console.log('🎵 Converted to note:', rawNote.noteName, 'MIDI:', rawNote.midiNumber, 'Freq:', rawNote.frequency.toFixed(1) + 'Hz');
+
         if (NoteConverter.isVocalRange(rawNote.frequency)) {
-          console.log('Processing note:', rawNote.note + rawNote.octave, 'MIDI:', rawNote.midiNumber, 'Freq:', rawNote.frequency.toFixed(1) + 'Hz');
-          processRawNote(rawNote);
+          console.log('✅ Note in vocal range, adding to staff');
+          addNoteDirectly(rawNote);
+        } else {
+          console.log('❌ Note outside vocal range:', rawNote.frequency.toFixed(1) + 'Hz');
         }
+      } else {
+        console.log('❌ Low confidence or no frequency:', $pitchResult.confidence);
       }
     }
+
+    updatePlayhead();
   }
 
-  // React to recording state for playhead visibility
+  // React to recording state changes
   $: {
     if ($isRecording) {
-      // Start time-based playhead animation
+      console.log('🔴 Recording started in StaffNotation');
+      // Start playhead animation
       if (!playheadAnimationId) {
         recordingStartTime = Date.now();
         currentBeat = 0;
@@ -228,7 +208,8 @@
         animatePlayhead();
       }
     } else {
-      // Stop time-based playhead animation
+      console.log('⏹️ Recording stopped in StaffNotation');
+      // Stop playhead animation
       if (playheadAnimationId) {
         cancelAnimationFrame(playheadAnimationId);
         playheadAnimationId = null;
@@ -238,6 +219,55 @@
     }
   }
   
+  let lastNoteTime = 0;
+  const NOTE_THROTTLE = 100; // ms between notes to prevent spam - reduced for better responsiveness
+  
+  function addNoteDirectly(rawNote: MusicalNote) {
+    const now = Date.now();
+
+    // Simple throttle to prevent note spam
+    if (now - lastNoteTime < NOTE_THROTTLE) {
+      console.log('🚫 Note throttled, too soon since last note');
+      return;
+    }
+
+    lastNoteTime = now;
+
+    // Determine clef for this note
+    const clef = registerDetector.analyzeNote(rawNote);
+    console.log('🎼 Clef determined:', clef);
+
+    // Calculate staff position with the determined clef
+    const staffPosition = calculateStaffPosition(rawNote, clef);
+    console.log('📍 Staff position calculated:', staffPosition);
+
+    // Create the complete note with staff positioning
+    const completeNote: MusicalNote = {
+      ...rawNote,
+      staffPosition,
+      clef,
+      noteIndex: $notes.length,
+      timestamp: now,
+      duration: 500, // Fixed duration for now
+      noteValue: 'quarter'
+    };
+
+    console.log('🎵 Complete note created:', {
+      noteName: completeNote.noteName,
+      frequency: completeNote.frequency.toFixed(1),
+      midiNumber: completeNote.midiNumber,
+      staffPosition: completeNote.staffPosition,
+      clef: completeNote.clef
+    });
+
+    // Add to the notes store
+    audioStateActions.addNote(completeNote);
+    console.log('✅ Note added to store, total notes:', $notes.length + 1);
+
+    // Update active note index for playhead
+    currentActiveNoteIndex = $notes.length;
+  }
+
   function processRawNote(rawNote: MusicalNote) {
     // Only update measure counter if we're actually adding a new note (not extending)
     // This is more compatible with sustain detection
@@ -271,8 +301,8 @@
       noteIndex: $notes.length // Store position for clef change tracking
     };
     
-    // Process through real-time sustain handler
-    if (sustainHandler) {
+    // Legacy code - no longer used with SimpleTranscriptionEngine
+    if (false) {
       const shouldAddNote = sustainHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
       
       // The sustain handler manages note additions and updates via its callbacks
@@ -312,18 +342,6 @@
     // Performance will be managed through canvas optimization and staff pagination
   }
   
-  // React to recording state changes
-  $: if (sustainHandler && !$isRecording) {
-    // If recording stopped, force end any active sustains
-    forceEndSustains();
-  }
-  
-  function forceEndSustains() {
-    if (!sustainHandler) return;
-    
-    console.log('🛑 Recording stopped - force ending sustains');
-    sustainHandler.forceEnd();
-  }
 
   function clearNotesAndMeasures() {
     // Clear all notes
@@ -494,21 +512,20 @@
     const currentWidth = responsiveWidth || width;
     const currentHeight = responsiveHeight || height;
     
-    // Calculate how many staff lines we need based on notes that actually exist
-    // Only create new staff lines when we have notes beyond the current staff capacity
+    // Calculate exact staff lines needed - only what's necessary
     const totalNotes = $notes.length;
-    const measuresNeeded = totalNotes > 0 ? Math.ceil(totalNotes / NOTES_PER_MEASURE) : 1;
-    const linesNeeded = Math.ceil(measuresNeeded / MEASURES_PER_LINE);
+    const notesPerLine = 16;
+    const linesNeeded = totalNotes > 0 ? Math.ceil(totalNotes / notesPerLine) : 1;
     
-    // Debug staff generation
-    if (totalNotes > 0 && Math.random() < 0.1) {
-      console.log(`Staff: ${totalNotes} notes, ${measuresNeeded} measures, ${linesNeeded} lines needed`);
-    }
+    // Calculate needed height
+    const neededHeight = Math.max(currentHeight, 200 + (linesNeeded - 1) * 150);
     
-    // Adjust canvas height dynamically for multiple lines
-    const neededHeight = Math.max(currentHeight, 150 + (linesNeeded - 1) * STAFF_LINE_HEIGHT);
-    if (canvas && canvas.height < neededHeight) {
-      canvas.height = neededHeight;
+    // Update canvas size if needed
+    if (canvas) {
+      if (canvas.height < neededHeight) {
+        canvas.height = neededHeight;
+        responsiveHeight = neededHeight;
+      }
     }
     
     // Clear canvas
@@ -520,19 +537,16 @@
     ctx.save();
     ctx.translate(panOffset.x, panOffset.y);
     
-    // Draw all staff systems (lines)
+    // Draw staff lines - simple approach
     for (let line = 0; line < linesNeeded; line++) {
-      drawStaffSystem(line, currentWidth, neededHeight);
+      drawSingleStaffLine(line, currentWidth);
     }
     
-    // Remove debug measure info for cleaner display
-    // drawMeasureInfo(currentWidth, 150);
+    // Draw all notes
+    drawAllNotes(currentWidth);
     
-    // Draw all notes across multiple lines
-    drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
-    
-    // Draw playhead if visible and recording
-    if (playheadPosition.visible && $isRecording) {
+    // Draw playhead if visible
+    if (playheadPosition.visible) {
       drawPlayhead();
     }
     
@@ -540,6 +554,76 @@
     ctx.restore();
   }
   
+  function drawSingleStaffLine(lineIndex: number, currentWidth: number) {
+    if (!ctx) return;
+    
+    const staffY = 150 + (lineIndex * 150); // Simple spacing
+    
+    // Draw 5 horizontal staff lines
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    
+    for (let i = 0; i < 5; i++) {
+      const y = staffY - 24 + (i * 12); // 12px spacing between lines
+      ctx.beginPath();
+      ctx.moveTo(50, y);
+      ctx.lineTo(currentWidth - 50, y);
+      ctx.stroke();
+    }
+    
+    // Draw treble clef at start of line - much larger and properly positioned
+    ctx.fillStyle = '#000000';
+    ctx.font = '80px serif'; // Much larger treble clef
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Position it properly on the G line (second line from bottom)
+    ctx.fillText('𝄞', 80, staffY + 12); // Center on G line at staffY + 12
+  }
+  
+  function drawAllNotes(currentWidth: number) {
+    if (!ctx || $notes.length === 0) return;
+
+    const notesPerLine = 16;
+
+    $notes.forEach((note, index) => {
+      const lineIndex = Math.floor(index / notesPerLine);
+      const noteInLine = index % notesPerLine;
+
+      const staffY = 150 + (lineIndex * 150);
+      const noteSpacing = (currentWidth - 200) / notesPerLine;
+      const x = 120 + (noteInLine * noteSpacing);
+
+      // Calculate Y position based on staff position
+      const y = staffY - (note.staffPosition * 6); // 6px per staff position
+
+      // Debug note positioning
+      if (index === $notes.length - 1) { // Only log the latest note
+        console.log('🎨 Drawing note:', {
+          index,
+          noteName: note.noteName,
+          staffPosition: note.staffPosition,
+          x: x.toFixed(1),
+          y: y.toFixed(1),
+          staffY: staffY
+        });
+      }
+
+      // Draw note
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Draw note name below staff
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(note.noteName, x, staffY + 40);
+
+      // Also draw frequency for debugging
+      ctx.fillText(note.frequency.toFixed(0) + 'Hz', x, staffY + 52);
+    });
+  }
+
   function drawStaffSystem(lineIndex: number, currentWidth: number, totalHeight: number) {
     if (!ctx) return;
     
@@ -942,7 +1026,7 @@
   function startAnimation() {
     function animate() {
       drawStaff();
-      // Note: drawStaff() already handles drawing notes via drawNotesMultiline()
+      // Note: drawStaff() handles everything - staff lines and notes
       animationId = requestAnimationFrame(animate);
     }
     animate();
