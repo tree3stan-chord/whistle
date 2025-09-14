@@ -67,13 +67,13 @@ export class RegisterDetector {
       }
     };
 
-    // Analysis parameters - very conservative clef switching
+    // Analysis parameters - more responsive clef switching
     this.recentNotes = [];              // Recent notes for analysis
-    this.analysisWindow = 10;           // Larger window to require more evidence for clef changes
-    this.clefChangeThreshold = 0.8;     // Higher confidence threshold for clef change
-    this.currentClef = 'treble';         // Default clef
+    this.analysisWindow = 6;            // Smaller window for more responsive detection
+    this.clefChangeThreshold = 0.6;     // Lower threshold for easier clef changes
+    this.currentClef = 'treble';        // Default clef (will switch quickly based on first notes)
     this.lastClefChange = 0;            // Timestamp of last clef change
-    this.minClefChangeInterval = 5000;  // Require 5 seconds between clef changes to prevent erratic switching
+    this.minClefChangeInterval = 1000;  // Only 1 second between clef changes for more responsiveness
 
     // Register statistics
     this.registerStats = {
@@ -111,19 +111,19 @@ export class RegisterDetector {
       this.recentNotes = this.recentNotes.slice(-this.analysisWindow);
     }
 
-    // Only trigger bass clef for notes below B3 (MIDI 59) with very strong evidence
-    if (midiNote < 59 && this.currentClef !== 'bass') { // Below B3 = MIDI 59
-      // Check if we have multiple recent notes in this low range
-      const recentLowNotes = this.recentNotes.filter(n => n.midi < 59);
-      if (recentLowNotes.length >= 6) { // Require at least 6 low notes for very strong evidence
-        console.log(`Multiple notes below B3 detected, switching to bass clef`);
+    // More responsive clef detection for bass singers
+    if (midiNote <= 58 && this.currentClef !== 'bass') { // A#3 and below = bass territory
+      // Check if we have recent notes in bass range
+      const recentLowNotes = this.recentNotes.filter(n => n.midi <= 58);
+      if (recentLowNotes.length >= 2) { // Only need 2 low notes for evidence
+        console.log(`Bass register notes detected (${note.noteName}), switching to bass clef`);
         return this.changeClef('bass');
       }
     }
 
-    // Switch back to treble for notes at C4 (MIDI 60) and above
-    if (midiNote >= 60 && this.currentClef !== 'treble') { // C4 = MIDI 60, clear treble territory
-      console.log(`Note ${note.noteName} (${midiNote}) is C4 or above, switching back to treble clef`);
+    // Switch to treble only for clearly high notes (F4 and above)
+    if (midiNote >= 65 && this.currentClef !== 'treble') { // F4 = MIDI 65, clear treble territory
+      console.log(`High note ${note.noteName} (${midiNote}) detected, switching to treble clef`);
       return this.changeClef('treble');
     }
 

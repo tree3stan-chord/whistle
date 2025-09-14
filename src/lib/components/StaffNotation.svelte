@@ -173,23 +173,36 @@
   }
   
   
-  // Debug real-time pitch detection
+  // Sustain-aware pitch detection with throttling
+  let lastPitchProcessTime = 0;
+  const PITCH_PROCESS_INTERVAL = 50; // ms - process pitch every 50ms for sustain updates
+
   $: {
     if ($isRecording && $pitchResult) {
-      console.log('🎤 Pitch detected:', $pitchResult.frequency?.toFixed(1) + 'Hz', 'confidence:', $pitchResult.confidence?.toFixed(3));
+      const now = Date.now();
 
-      if ($pitchResult.frequency && $pitchResult.confidence > 0.4) {
-        const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
-        console.log('🎵 Converted to note:', rawNote.noteName, 'MIDI:', rawNote.midiNumber, 'Freq:', rawNote.frequency.toFixed(1) + 'Hz');
+      // Throttle pitch processing for sustained notes
+      if (now - lastPitchProcessTime >= PITCH_PROCESS_INTERVAL) {
+        lastPitchProcessTime = now;
+        console.log('🎤 Pitch detected:', $pitchResult.frequency?.toFixed(1) + 'Hz', 'confidence:', $pitchResult.confidence?.toFixed(3));
 
-        if (NoteConverter.isVocalRange(rawNote.frequency)) {
-          console.log('✅ Note in vocal range, adding to staff');
-          addNoteDirectly(rawNote);
+        if ($pitchResult.frequency && $pitchResult.confidence > 0.4) {
+          const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
+
+          if (NoteConverter.isVocalRange(rawNote.frequency)) {
+            console.log('✅ Processing sustained note:', rawNote.noteName);
+            addNoteDirectly(rawNote);
+          } else {
+            console.log('❌ Note outside vocal range:', rawNote.frequency.toFixed(1) + 'Hz');
+          }
         } else {
-          console.log('❌ Note outside vocal range:', rawNote.frequency.toFixed(1) + 'Hz');
+          // No clear pitch detected - end current sustain
+          if (currentSustainNote) {
+            const finalDuration = now - sustainStartTime;
+            console.log('🎵 Ending sustain due to silence:', currentSustainNote.noteName, finalDuration.toFixed(0) + 'ms');
+            currentSustainNote = null;
+          }
         }
-      } else {
-        console.log('❌ Low confidence or no frequency:', $pitchResult.confidence);
       }
     }
 
@@ -209,6 +222,34 @@
       }
     } else {
       console.log('⏹️ Recording stopped in StaffNotation');
+
+      // Finalize any current sustain
+      if (currentSustainNote) {
+        const finalDuration = Date.now() - sustainStartTime;
+        const finalNoteValue = calculateNoteValue(finalDuration);
+
+        console.log('🎵 Finalizing sustain on recording stop:', {
+          noteName: currentSustainNote.noteName,
+          finalDuration: finalDuration.toFixed(0) + 'ms',
+          finalNoteValue: finalNoteValue
+        });
+
+        // Update the final note
+        const updatedNote = {
+          ...currentSustainNote,
+          duration: finalDuration,
+          noteValue: finalNoteValue
+        };
+
+        const currentNotes = $notes;
+        if (currentNotes.length > 0) {
+          currentNotes[currentNotes.length - 1] = updatedNote;
+          audioStateActions.setNotes([...currentNotes]);
+        }
+
+        currentSustainNote = null;
+      }
+
       // Stop playhead animation
       if (playheadAnimationId) {
         cancelAnimationFrame(playheadAnimationId);
@@ -220,52 +261,108 @@
   }
   
   let lastNoteTime = 0;
-  const NOTE_THROTTLE = 100; // ms between notes to prevent spam - reduced for better responsiveness
-  
+  let currentSustainNote: MusicalNote | null = null;
+  let sustainStartTime = 0;
+  const PITCH_TOLERANCE = 50; // Hz tolerance for same pitch
+  const MIN_SUSTAIN_DURATION = 300; // ms minimum to register as sustained
+
   function addNoteDirectly(rawNote: MusicalNote) {
     const now = Date.now();
 
-    // Simple throttle to prevent note spam
-    if (now - lastNoteTime < NOTE_THROTTLE) {
-      console.log('🚫 Note throttled, too soon since last note');
-      return;
-    }
-
-    lastNoteTime = now;
-
     // Determine clef for this note
     const clef = registerDetector.analyzeNote(rawNote);
-    console.log('🎼 Clef determined:', clef);
 
     // Calculate staff position with the determined clef
     const staffPosition = calculateStaffPosition(rawNote, clef);
-    console.log('📍 Staff position calculated:', staffPosition);
 
-    // Create the complete note with staff positioning
+    // Check if this continues the current sustain
+    if (currentSustainNote && isSamePitch(rawNote, currentSustainNote)) {
+      // Extend existing note duration
+      const sustainDuration = now - sustainStartTime;
+      const noteValue = calculateNoteValue(sustainDuration);
+
+      console.log('🎵 Extending sustain:', {
+        noteName: rawNote.noteName,
+        sustainDuration: sustainDuration.toFixed(0) + 'ms',
+        noteValue: noteValue
+      });
+
+      // Update the existing note with new duration
+      const updatedNote = {
+        ...currentSustainNote,
+        duration: sustainDuration,
+        noteValue: noteValue
+      };
+
+      // Update the note in the store
+      const currentNotes = $notes;
+      if (currentNotes.length > 0) {
+        currentNotes[currentNotes.length - 1] = updatedNote;
+        audioStateActions.setNotes([...currentNotes]);
+      }
+
+      return;
+    }
+
+    // End previous sustain if exists
+    if (currentSustainNote) {
+      const finalDuration = now - sustainStartTime;
+      console.log('🎵 Ending sustain:', currentSustainNote.noteName, finalDuration.toFixed(0) + 'ms');
+    }
+
+    // Start new note/sustain
+    sustainStartTime = now;
+
+    // Use the same timing source as the playhead
+    const noteCurrentBeat = currentBeat;
+
+    // Create new note
     const completeNote: MusicalNote = {
       ...rawNote,
       staffPosition,
       clef,
       noteIndex: $notes.length,
       timestamp: now,
-      duration: 500, // Fixed duration for now
+      beatPosition: noteCurrentBeat,
+      duration: MIN_SUSTAIN_DURATION, // Start with minimum duration
       noteValue: 'quarter'
     };
 
-    console.log('🎵 Complete note created:', {
+    console.log('🎵 New note started:', {
       noteName: completeNote.noteName,
       frequency: completeNote.frequency.toFixed(1),
-      midiNumber: completeNote.midiNumber,
-      staffPosition: completeNote.staffPosition,
-      clef: completeNote.clef
+      beatPosition: currentBeat.toFixed(2)
     });
+
+    // Store as current sustain
+    currentSustainNote = completeNote;
 
     // Add to the notes store
     audioStateActions.addNote(completeNote);
-    console.log('✅ Note added to store, total notes:', $notes.length + 1);
 
     // Update active note index for playhead
-    currentActiveNoteIndex = $notes.length;
+    currentActiveNoteIndex = $notes.length - 1;
+    lastNoteTime = now;
+  }
+
+  function isSamePitch(note1: MusicalNote, note2: MusicalNote): boolean {
+    const freqDiff = Math.abs(note1.frequency - note2.frequency);
+    const midiDiff = Math.abs(note1.midiNumber - note2.midiNumber);
+
+    // Same if frequency is close OR MIDI note is same
+    return freqDiff <= PITCH_TOLERANCE || midiDiff <= 0.5;
+  }
+
+  function calculateNoteValue(duration: number): string {
+    const bpm = 120;
+    const beatDuration = (60 * 1000) / bpm; // ms per beat
+    const ratio = duration / beatDuration;
+
+    if (ratio >= 3.5) return 'whole';
+    if (ratio >= 1.75) return 'half';
+    if (ratio >= 0.875) return 'quarter';
+    if (ratio >= 0.4375) return 'eighth';
+    return 'sixteenth';
   }
 
   function processRawNote(rawNote: MusicalNote) {
@@ -376,46 +473,39 @@
    * Update playhead position based on current active note
    */
   function updatePlayhead() {
-    if (!$isRecording || currentActiveNoteIndex < 0 || $notes.length === 0) {
+    if (!$isRecording) {
       playheadPosition.visible = false;
       return;
     }
 
-    // Find the position of the current active note
-    const activeNote = $notes[currentActiveNoteIndex];
-    if (!activeNote) {
-      playheadPosition.visible = false;
-      return;
-    }
+    // Use current time position, same as note placement
+    const now = Date.now();
+    const elapsedMs = now - recordingStartTime;
+    const bpm = 120; // Fixed BPM
+    const beatsPerMs = bpm / (60 * 1000);
+    const currentBeat = elapsedMs * beatsPerMs;
 
-    // Simplified playhead positioning based on note index
-    const totalNotes = Math.max($notes.length, 1);
-    const notePosition = Math.max(currentActiveNoteIndex, 0);
-    
-    // Calculate approximate measure and position (simplified)
-    const measureNum = Math.floor(notePosition / NOTES_PER_MEASURE) + 1;
-    const noteInMeasure = notePosition % NOTES_PER_MEASURE;
-    
-    // Calculate which staff line this measure is on
-    const lineIndex = Math.floor((measureNum - 1) / MEASURES_PER_LINE);
-    const measureInLine = ((measureNum - 1) % MEASURES_PER_LINE);
-    
-    // Calculate X position
+    // Calculate measure and line position from beat (same as notes)
+    const beatsPerMeasure = 4;
+    const measuresPerLine = 4;
+
+    const measureNum = Math.floor(currentBeat / beatsPerMeasure);
+    const beatInMeasure = currentBeat % beatsPerMeasure;
+    const lineIndex = Math.floor(measureNum / measuresPerLine);
+    const measureInLine = measureNum % measuresPerLine;
+
+    // Calculate X position based on timing (same as notes)
     const currentWidth = responsiveWidth || width;
-    const clefSpacing = CLEF_FONT_SIZE * 2.0;
-    const staffStart = STAFF_MARGIN + clefSpacing;
-    const staffEnd = currentWidth - STAFF_MARGIN;
+    const staffY = 150 + (lineIndex * 150);
+    const staffStart = 120; // Leave space for clef
+    const staffEnd = currentWidth - 50;
     const availableWidth = staffEnd - staffStart;
-    const measureWidth = availableWidth / MEASURES_PER_LINE;
-    const measureStart = staffStart + (measureInLine * measureWidth);
-    const noteSpacing = measureWidth / NOTES_PER_MEASURE;
-    const noteX = measureStart + (noteInMeasure * noteSpacing) + (noteSpacing / 2);
-    
-    // Calculate Y position (staff line)
-    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
-    
+    const measureWidth = availableWidth / measuresPerLine;
+    const beatSpacing = measureWidth / beatsPerMeasure;
+    const x = staffStart + (measureInLine * measureWidth) + (beatInMeasure * beatSpacing);
+
     // Update playhead position
-    playheadPosition.x = noteX;
+    playheadPosition.x = x;
     playheadPosition.y = staffY;
     playheadPosition.visible = true;
   }
@@ -571,27 +661,46 @@
       ctx.stroke();
     }
     
-    // Draw treble clef at start of line - much larger and properly positioned
+    // Draw appropriate clef symbol based on current clef
     ctx.fillStyle = '#000000';
-    ctx.font = '80px serif'; // Much larger treble clef
+    ctx.font = '80px serif'; // Large clef symbol
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // Position it properly on the G line (second line from bottom)
-    ctx.fillText('𝄞', 80, staffY + 12); // Center on G line at staffY + 12
+
+    // Draw the appropriate clef for this staff line
+    if (currentClef === 'bass') {
+      // Bass clef symbol positioned on F line (4th line from bottom)
+      ctx.fillText('𝄢', 80, staffY + 12); // Center on F line at staffY + 12
+    } else {
+      // Treble clef symbol positioned on G line (2nd line from bottom)
+      ctx.fillText('𝄞', 80, staffY - 12); // Center on G line at staffY - 12
+    }
   }
   
   function drawAllNotes(currentWidth: number) {
     if (!ctx || $notes.length === 0) return;
 
-    const notesPerLine = 16;
-
     $notes.forEach((note, index) => {
-      const lineIndex = Math.floor(index / notesPerLine);
-      const noteInLine = index % notesPerLine;
+      // Use beat position for timing, same as playhead calculation
+      const beatPosition = (note as any).beatPosition || 0;
 
+      // Calculate measure and line position from beat
+      const beatsPerMeasure = 4;
+      const measuresPerLine = 4;
+
+      const measureNum = Math.floor(beatPosition / beatsPerMeasure);
+      const beatInMeasure = beatPosition % beatsPerMeasure;
+      const lineIndex = Math.floor(measureNum / measuresPerLine);
+      const measureInLine = measureNum % measuresPerLine;
+
+      // Calculate X position based on timing (same as playhead)
       const staffY = 150 + (lineIndex * 150);
-      const noteSpacing = (currentWidth - 200) / notesPerLine;
-      const x = 120 + (noteInLine * noteSpacing);
+      const staffStart = 120; // Leave space for clef
+      const staffEnd = currentWidth - 50;
+      const availableWidth = staffEnd - staffStart;
+      const measureWidth = availableWidth / measuresPerLine;
+      const beatSpacing = measureWidth / beatsPerMeasure;
+      const x = staffStart + (measureInLine * measureWidth) + (beatInMeasure * beatSpacing);
 
       // Calculate Y position based on staff position
       const y = staffY - (note.staffPosition * 6); // 6px per staff position
@@ -601,6 +710,7 @@
         console.log('🎨 Drawing note:', {
           index,
           noteName: note.noteName,
+          beatPosition: beatPosition.toFixed(2),
           staffPosition: note.staffPosition,
           x: x.toFixed(1),
           y: y.toFixed(1),
@@ -619,8 +729,8 @@
       ctx.textAlign = 'center';
       ctx.fillText(note.noteName, x, staffY + 40);
 
-      // Also draw frequency for debugging
-      ctx.fillText(note.frequency.toFixed(0) + 'Hz', x, staffY + 52);
+      // Also draw beat position for debugging
+      ctx.fillText('♩' + beatPosition.toFixed(1), x, staffY + 52);
     });
   }
 
@@ -682,9 +792,8 @@
     switch (clefToUse) {
       case 'treble':
         // Treble clef centers on G4 line (2nd line from bottom)
-        // G4 is at staff position -2, so Y position should be staffY + LINE_SPACING
-        // Adjust slightly to center properly on the G line  
-        ctx.fillText('𝄞', x, staffY + (LINE_SPACING * 0.5));
+        // The G line is -LINE_SPACING from the center staff line
+        ctx.fillText('𝄞', x, staffY - LINE_SPACING);
         break;
       case 'bass':
         // Bass clef centers on F line (2nd line from bottom, -LINE_SPACING from center)

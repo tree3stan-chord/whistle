@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { modalActions, modalStates, constrainToViewport } from '../stores/modalStore.js';
+  import { modalActions, modalStates, constrainToViewport, getDefaultModalVisibility } from '../stores/modalStore.js';
   import type { ModalConfig, ModalPosition } from '../stores/modalStore.js';
 
   // Props
@@ -12,11 +12,16 @@
   let titleBarElement: HTMLDivElement;
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
-  let modalState = { 
-    position: config.initialPosition, 
-    zIndex: 1000, 
-    isMinimized: false, 
-    isVisible: false  // Start hidden until properly registered
+
+  // Get default visibility for this modal
+  const defaultVisibility = getDefaultModalVisibility();
+  const shouldBeVisible = defaultVisibility[config.id] !== undefined ? defaultVisibility[config.id] : true;
+
+  let modalState = {
+    position: config.initialPosition,
+    zIndex: 1000,
+    isMinimized: false,
+    isVisible: shouldBeVisible  // Start with correct default visibility
   };
 
   // Subscribe to modal store for this specific modal
