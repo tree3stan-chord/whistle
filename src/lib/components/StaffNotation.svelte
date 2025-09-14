@@ -329,8 +329,17 @@
     };
 
     console.log('🎵 New note started:', {
-      noteName: completeNote.noteName,
-      frequency: completeNote.frequency.toFixed(1),
+      originalRawNote: {
+        noteName: rawNote.noteName,
+        frequency: rawNote.frequency.toFixed(1),
+        midiNumber: rawNote.midiNumber
+      },
+      finalCompleteNote: {
+        noteName: completeNote.noteName,
+        frequency: completeNote.frequency.toFixed(1),
+        midiNumber: completeNote.midiNumber,
+        staffPosition: completeNote.staffPosition
+      },
       beatPosition: currentBeat.toFixed(2)
     });
 
@@ -365,79 +374,6 @@
     return 'sixteenth';
   }
 
-  function processRawNote(rawNote: MusicalNote) {
-    // Only update measure counter if we're actually adding a new note (not extending)
-    // This is more compatible with sustain detection
-    
-    // Analyze register and potentially queue clef change
-    if (registerDetector) {
-      const suggestedClef = registerDetector.analyzeNote(rawNote);
-      
-      // Apply clef change ONLY for subsequent notes (localized)
-      if (suggestedClef !== currentClef) {
-        console.log(`Cadenza: Clef changed from ${currentClef} to ${suggestedClef} at note ${$notes.length}`);
-        
-        // Record the clef change position for rendering
-        const currentMeasurePosition = Math.floor($notes.length / NOTES_PER_MEASURE) + 1;
-        measuredClefChanges.set(currentMeasurePosition, suggestedClef);
-        
-        // Update current clef for subsequent notes only
-        currentClef = suggestedClef;
-        
-        // Force redraw to show new clef symbol at change point
-        drawStaff();
-      }
-    }
-    
-    // Recalculate staff position for current clef and store clef with note
-    const noteWithCorrectStaffPosition = {
-      ...rawNote,
-      staffPosition: calculateStaffPosition(rawNote, currentClef),
-      timestamp: Date.now(),
-      clef: currentClef, // Store the clef that was active when this note was created
-      noteIndex: $notes.length // Store position for clef change tracking
-    };
-    
-    // Legacy code - no longer used with SimpleTranscriptionEngine
-    if (false) {
-      const shouldAddNote = sustainHandler.processNote(noteWithCorrectStaffPosition, $notes.length);
-      
-      // The sustain handler manages note additions and updates via its callbacks
-      // We just need to track measures and playhead
-      if (shouldAddNote) {
-        // Track measures only when adding new notes
-        notesInCurrentMeasure++;
-        if (notesInCurrentMeasure > NOTES_PER_MEASURE) {
-          currentMeasure++;
-          notesInCurrentMeasure = 1;
-        }
-        
-        // Note is added by sustainHandler's onNoteAdd callback
-        setTimeout(() => {
-          currentActiveNoteIndex = $notes.length - 1; // Index of the note just added
-          updatePlayhead();
-        }, 0);
-      } else {
-        // We're extending an existing note, so the active note is the last one
-        currentActiveNoteIndex = $notes.length - 1;
-        updatePlayhead(); // Update playhead for sustained note
-      }
-    } else {
-      // Fallback: add note directly if sustainHandler not ready
-      notesInCurrentMeasure++;
-      if (notesInCurrentMeasure > NOTES_PER_MEASURE) {
-        currentMeasure++;
-        notesInCurrentMeasure = 1;
-      }
-      
-      audioStateActions.addNote(noteWithCorrectStaffPosition);
-      currentActiveNoteIndex = $notes.length - 1; // Index of the note just added
-      updatePlayhead();
-    }
-    
-    // Allow unlimited notes for proper musical transcription
-    // Performance will be managed through canvas optimization and staff pagination
-  }
   
 
   function clearNotesAndMeasures() {
