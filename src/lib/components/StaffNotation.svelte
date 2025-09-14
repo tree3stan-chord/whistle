@@ -792,7 +792,8 @@
     switch (clefToUse) {
       case 'treble':
         // Treble clef centers on G4 line (2nd line from bottom)
-        // The G line is -LINE_SPACING from the center staff line
+        // Staff lines: staffY-2*LINE_SPACING, staffY-LINE_SPACING, staffY, staffY+LINE_SPACING, staffY+2*LINE_SPACING
+        // G line is the 2nd from bottom = staffY-LINE_SPACING
         ctx.fillText('𝄞', x, staffY - LINE_SPACING);
         break;
       case 'bass':
