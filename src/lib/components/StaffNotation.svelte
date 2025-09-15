@@ -6,6 +6,7 @@
   import { RegisterDetector, type ClefType } from '../audio/RegisterDetector.js';
   import { ExportService } from '../export/ExportService.js';
   import type { TempoManager } from '../audio/TempoManager.js';
+  import { ScoreConfigManager } from '../config/ScoreConfig.js';
   
   export let width = 800;
   export let height = 200;
@@ -40,39 +41,46 @@
   let currentMeasure = 1;
   let notesInCurrentMeasure = 0;
   let measuredClefChanges = new Map<number, ClefType>();
-  const NOTES_PER_MEASURE = 4; // 4/4 time signature
-  const MEASURES_PER_LINE = 4; // 4 measures per staff line
-  const STAFF_LINE_HEIGHT = 120; // Vertical space between staff systems
   
   // Staff rendering constants (base values, will be scaled)
   let STAFF_MARGIN = 50;
   let LINE_SPACING = 12;
-  const STAFF_LINES = 5;
   let NOTE_RADIUS = 4;
   let NOTE_SPACING = 20;
   let CLEF_FONT_SIZE = 32;
-  
+
+  // Score configuration manager
+  const scoreConfig = new ScoreConfigManager();
+  let config = scoreConfig.getConfig();
+
   // Calculate responsive dimensions
   function updateResponsiveDimensions() {
     viewportWidth = window.innerWidth;
     viewportHeight = window.innerHeight;
-    
+
     // Use full viewport for canvas (minus navbar height)
     responsiveWidth = viewportWidth;
     responsiveHeight = viewportHeight - 60; // 60px for navbar
-    
-    // Scale constants based on viewport size but with sensible bounds
-    const baseWidth = 1200; // Reference width
-    const baseHeight = 600; // Reference height
-    const widthScale = responsiveWidth / baseWidth;
-    const heightScale = responsiveHeight / baseHeight;
-    const scaleFactor = Math.min(widthScale, heightScale, 2.0) * 0.85; // Reduce scale by 15% for better fit
-    
-    STAFF_MARGIN = Math.max(70 * scaleFactor, 60); // Increased margin for clef space
-    LINE_SPACING = Math.max(12 * scaleFactor, 10);
-    NOTE_RADIUS = Math.max(4 * scaleFactor, 3);
-    NOTE_SPACING = Math.max(20 * scaleFactor, 16);
-    CLEF_FONT_SIZE = Math.max(80 * scaleFactor, 64); // Much larger, truly prominent clef
+
+    // Update score config with responsive dimensions
+    const widthScale = responsiveWidth / config.rendering.baseWidth;
+    const heightScale = responsiveHeight / config.rendering.baseHeight;
+    const scaleFactor = Math.min(widthScale, heightScale, config.rendering.maxScaleFactor) *
+                       (1.0 - config.rendering.scaleReduction);
+
+    scoreConfig.updateRendering({
+      baseWidth: responsiveWidth,
+      baseHeight: responsiveHeight
+    });
+
+    config = scoreConfig.getConfig();
+
+    // Update legacy constants from config
+    STAFF_MARGIN = config.staffLayout.staffMargin;
+    LINE_SPACING = config.staffLayout.lineSpacing;
+    NOTE_RADIUS = config.staffLayout.noteRadius;
+    NOTE_SPACING = config.staffLayout.defaultNoteSpacing;
+    CLEF_FONT_SIZE = config.staffLayout.clefFontSize;
   }
 
   onMount(() => {
@@ -427,31 +435,18 @@
       return;
     }
 
-    // Use current time position, same as note placement
+    // Use ScoreConfig's time translation utilities for consistent positioning
     const now = Date.now();
-    const elapsedMs = now - recordingStartTime;
-    const bpm = 120; // Fixed BPM
-    const beatsPerMs = bpm / (60 * 1000);
-    const currentBeat = elapsedMs * beatsPerMs;
-
-    // Calculate measure and line position from beat (same as notes)
-    const beatsPerMeasure = 4;
-    const measuresPerLine = 4;
-
-    const measureNum = Math.floor(currentBeat / beatsPerMeasure);
-    const beatInMeasure = currentBeat % beatsPerMeasure;
-    const lineIndex = Math.floor(measureNum / measuresPerLine);
-    const measureInLine = measureNum % measuresPerLine;
-
-    // Calculate X position based on timing (same as notes)
     const currentWidth = responsiveWidth || width;
-    const staffY = 150 + (lineIndex * 150);
-    const staffStart = 120; // Leave space for clef
-    const staffEnd = currentWidth - 50;
-    const availableWidth = staffEnd - staffStart;
-    const measureWidth = availableWidth / measuresPerLine;
-    const beatSpacing = measureWidth / beatsPerMeasure;
-    const x = staffStart + (measureInLine * measureWidth) + (beatInMeasure * beatSpacing);
+
+    const timePosition = scoreConfig.timestampToPosition(
+      now,
+      recordingStartTime,
+      currentWidth
+    );
+
+    const x = timePosition.pixelX;
+    const staffY = timePosition.pixelY;
 
     // Update playhead position
     playheadPosition.x = x;
@@ -515,8 +510,8 @@
     const beatInMeasure = beat % beatsPerMeasure;
     
     // Calculate which staff line this measure is on
-    const lineIndex = Math.floor((measureNum - 1) / MEASURES_PER_LINE);
-    const measureInLine = ((measureNum - 1) % MEASURES_PER_LINE);
+    const lineIndex = Math.floor((measureNum - 1) / config.staffLayout.measuresPerStaffLine);
+    const measureInLine = ((measureNum - 1) % config.staffLayout.measuresPerStaffLine);
     
     // Calculate X position based on time, not notes
     const currentWidth = responsiveWidth || width;
@@ -524,13 +519,13 @@
     const staffStart = STAFF_MARGIN + clefSpacing;
     const staffEnd = currentWidth - STAFF_MARGIN;
     const availableWidth = staffEnd - staffStart;
-    const measureWidth = availableWidth / MEASURES_PER_LINE;
+    const measureWidth = availableWidth / config.staffLayout.measuresPerStaffLine;
     const measureStart = staffStart + (measureInLine * measureWidth);
     const beatSpacing = measureWidth / beatsPerMeasure;
     const playheadX = measureStart + (beatInMeasure * beatSpacing);
     
     // Calculate Y position (staff line)
-    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
+    const staffY = scoreConfig.getStaffY(lineIndex);
     
     // Update playhead position
     playheadPosition.x = playheadX;
@@ -576,13 +571,13 @@
     ctx.save();
     ctx.translate(panOffset.x, panOffset.y);
     
-    // Draw staff lines - simple approach
+    // Draw staff systems with proper multi-staff layout
     for (let line = 0; line < linesNeeded; line++) {
-      drawSingleStaffLine(line, currentWidth);
+      drawStaffSystem(line, currentWidth, neededHeight);
     }
-    
-    // Draw all notes
-    drawAllNotes(currentWidth);
+
+    // Draw notes using multi-staff layout
+    drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
     
     // Draw playhead if visible
     if (playheadPosition.visible) {
@@ -596,7 +591,7 @@
   function drawSingleStaffLine(lineIndex: number, currentWidth: number) {
     if (!ctx) return;
     
-    const staffY = 150 + (lineIndex * 150); // Simple spacing
+    const staffY = scoreConfig.getStaffY(lineIndex); // Simple spacing
     
     // Draw 5 horizontal staff lines
     ctx.strokeStyle = '#000000';
@@ -635,26 +630,18 @@
       // Use beat position for timing, same as playhead calculation
       const beatPosition = (note as any).beatPosition || 0;
 
-      // Calculate measure and line position from beat
-      const beatsPerMeasure = 4;
-      const measuresPerLine = 4;
+      // Use ScoreConfig's time translation utilities
+      const timePosition = scoreConfig.timestampToPosition(
+        (note as any).timestamp || Date.now(),
+        recordingStartTime,
+        currentWidth
+      );
 
-      const measureNum = Math.floor(beatPosition / beatsPerMeasure);
-      const beatInMeasure = beatPosition % beatsPerMeasure;
-      const lineIndex = Math.floor(measureNum / measuresPerLine);
-      const measureInLine = measureNum % measuresPerLine;
-
-      // Calculate X position based on timing (same as playhead)
-      const staffY = 150 + (lineIndex * 150);
-      const staffStart = 120; // Leave space for clef
-      const staffEnd = currentWidth - 50;
-      const availableWidth = staffEnd - staffStart;
-      const measureWidth = availableWidth / measuresPerLine;
-      const beatSpacing = measureWidth / beatsPerMeasure;
-      const x = staffStart + (measureInLine * measureWidth) + (beatInMeasure * beatSpacing);
+      const x = timePosition.pixelX;
+      const staffY = timePosition.pixelY;
 
       // Calculate Y position based on staff position
-      const y = staffY - (note.staffPosition * 6); // 6px per staff position
+      const y = staffY - (note.staffPosition * (config.staffLayout.lineSpacing / 2));
 
       // Debug note positioning (temporarily disabled to reduce spam)
       if (false && index === $notes.length - 1) { // Only log the latest note
@@ -689,7 +676,7 @@
     if (!ctx) return;
     
     // Calculate Y position for this staff system
-    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
+    const staffY = scoreConfig.getStaffY(lineIndex);
     
     // Draw staff lines
     ctx.strokeStyle = '#000000';
@@ -699,7 +686,7 @@
     const staffEnd = currentWidth - STAFF_MARGIN;
     
     // Draw 5 staff lines
-    for (let i = 0; i < STAFF_LINES; i++) {
+    for (let i = 0; i < config.staffLayout.linesPerStaff; i++) {
       const y = staffY - (LINE_SPACING * 2) + (i * LINE_SPACING);
       ctx.beginPath();
       ctx.moveTo(staffStart, y);
@@ -708,11 +695,11 @@
     }
     
     // Determine which clef to use for this line
-    const firstMeasureOnLine = (lineIndex * MEASURES_PER_LINE) + 1;
+    const firstMeasureOnLine = (lineIndex * config.staffLayout.measuresPerStaffLine) + 1;
     let clefForLine = currentClef;
     
     // Check if there are any clef changes that apply to this line
-    for (let measure = firstMeasureOnLine; measure < firstMeasureOnLine + MEASURES_PER_LINE; measure++) {
+    for (let measure = firstMeasureOnLine; measure < firstMeasureOnLine + config.staffLayout.measuresPerStaffLine; measure++) {
       if (measuredClefChanges.has(measure)) {
         clefForLine = measuredClefChanges.get(measure)!;
         break;
@@ -763,23 +750,28 @@
   }
 
   function drawMeasureBars(lineIndex: number, staffY: number, staffStart: number, staffEnd: number) {
-    if (!ctx) return;
-    
+    if (!ctx || !config.staffLayout.showBarlines) return;
+
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
-    
-    const clefSpacing = CLEF_FONT_SIZE * 1.5; // Adjusted spacing for better measure distribution
-    const availableWidth = staffEnd - staffStart - clefSpacing;
-    const measureWidth = availableWidth / MEASURES_PER_LINE;
-    
+
+    const staffWidth = staffEnd - staffStart;
+    const measurePositions = scoreConfig.getMeasurePositions(staffWidth);
+
     // Draw measure bars (vertical lines)
-    for (let i = 0; i <= MEASURES_PER_LINE; i++) {
-      const x = staffStart + clefSpacing + (i * measureWidth);
+    measurePositions.forEach(x => {
       ctx.beginPath();
-      ctx.moveTo(x, staffY - (LINE_SPACING * 2));
-      ctx.lineTo(x, staffY + (LINE_SPACING * 2));
+      ctx.moveTo(staffStart + x, staffY - (config.staffLayout.lineSpacing * 2));
+      ctx.lineTo(staffStart + x, staffY + (config.staffLayout.lineSpacing * 2));
       ctx.stroke();
-    }
+    });
+
+    // Draw initial barline at staff start (after clef)
+    const clefSpace = config.staffLayout.clefFontSize * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(staffStart + clefSpace, staffY - (config.staffLayout.lineSpacing * 2));
+    ctx.lineTo(staffStart + clefSpace, staffY + (config.staffLayout.lineSpacing * 2));
+    ctx.stroke();
   }
 
   function drawNotesMultiline(currentWidth: number, totalHeight: number, linesNeeded: number) {
@@ -797,7 +789,7 @@
       notesByMeasure.get(measureNum)!.push({ note, index });
       
       noteCount++;
-      if (noteCount >= NOTES_PER_MEASURE) {
+      if (noteCount >= config.staffLayout.beatsPerMeasure) {
         measureNum++;
         noteCount = 0;
       }
@@ -805,8 +797,8 @@
     
     // Draw notes on appropriate staff lines
     notesByMeasure.forEach((notesInMeasure, measure) => {
-      const lineIndex = Math.floor((measure - 1) / MEASURES_PER_LINE);
-      const measureInLine = ((measure - 1) % MEASURES_PER_LINE);
+      const lineIndex = Math.floor((measure - 1) / config.staffLayout.measuresPerStaffLine);
+      const measureInLine = ((measure - 1) % config.staffLayout.measuresPerStaffLine);
       
       
       if (lineIndex < linesNeeded) {
@@ -818,17 +810,17 @@
   function drawMeasureNotes(notesInMeasure: any[], lineIndex: number, measureInLine: number, currentWidth: number) {
     if (!ctx) return;
     
-    const staffY = 150 + (lineIndex * STAFF_LINE_HEIGHT);
+    const staffY = scoreConfig.getStaffY(lineIndex);
     const clefSpacing = CLEF_FONT_SIZE * 2.0; // Match the spacing from drawStaffSystem
     const staffStart = STAFF_MARGIN + clefSpacing;
     const staffEnd = currentWidth - STAFF_MARGIN;
     const availableWidth = staffEnd - staffStart;
-    const measureWidth = availableWidth / MEASURES_PER_LINE;
+    const measureWidth = availableWidth / config.staffLayout.measuresPerStaffLine;
     const measureStart = staffStart + (measureInLine * measureWidth);
     
     // Draw notes within this measure
     let positionInMeasure = 0;
-    const noteSpacing = measureWidth / Math.max(notesInMeasure.length, NOTES_PER_MEASURE);
+    const noteSpacing = measureWidth / Math.max(notesInMeasure.length, config.staffLayout.beatsPerMeasure);
     
     notesInMeasure.forEach(({ note, index }, noteIndex) => {
       const x = measureStart + (noteIndex * noteSpacing) + (noteSpacing / 2);
@@ -853,11 +845,23 @@
       
       const y = staffY - (staffPosition * LINE_SPACING / 2);
       
+      // For the currently sustaining note, calculate live duration and note value
+      let noteToRender = note;
+      if (currentSustainNote && index === $notes.length - 1 && $isRecording) {
+        const currentDuration = Date.now() - sustainStartTime;
+        const liveNoteValue = calculateNoteValue(currentDuration);
+        noteToRender = {
+          ...note,
+          duration: currentDuration,
+          noteValue: liveNoteValue
+        };
+      }
+
       // Calculate width based on note duration
-      const noteWidth = Math.min(calculateNoteWidth(note), noteSpacing * 0.8);
-      
+      const noteWidth = Math.min(calculateNoteWidth(noteToRender), noteSpacing * 0.8);
+
       // Draw note symbol
-      drawNoteSymbol(x, y, note, noteWidth);
+      drawNoteSymbol(x, y, noteToRender, noteWidth);
       
       // Draw note name below staff (scaled for multiline)
       const noteFontSize = Math.max(8, CLEF_FONT_SIZE * 0.25);
@@ -865,21 +869,26 @@
       ctx.fillStyle = '#666666';
       ctx.textAlign = 'center';
       const textY = staffY + (LINE_SPACING * 2.5);
-      ctx.fillText(note.noteName, x, textY);
+
+      // Show live note value for sustaining notes
+      if (currentSustainNote && index === $notes.length - 1 && $isRecording) {
+        ctx.fillText(`${note.noteName} (${noteToRender.noteValue})`, x, textY);
+      } else {
+        ctx.fillText(note.noteName, x, textY);
+      }
     });
   }
 
   function drawMeasureInfo(currentWidth: number, staffY: number) {
-    if (!ctx) return;
-    
+    if (!ctx || !config.staffLayout.showMeasureNumbers) return;
+
     // Draw current measure number
-    const measureFontSize = Math.max(12, CLEF_FONT_SIZE * 0.375);
-    ctx.font = `${measureFontSize}px Arial`;
+    ctx.font = `${config.staffLayout.measureNumberFontSize}px Arial`;
     ctx.fillStyle = '#666666';
     ctx.textAlign = 'left';
     ctx.fillText(`Measure ${currentMeasure}`, 10, 30);
-    ctx.fillText(`${notesInCurrentMeasure}/${NOTES_PER_MEASURE}`, 10, 50);
-    
+    ctx.fillText(`${notesInCurrentMeasure}/${config.staffLayout.beatsPerMeasure}`, 10, 50);
+
     ctx.textAlign = 'center'; // Reset alignment
   }
 
