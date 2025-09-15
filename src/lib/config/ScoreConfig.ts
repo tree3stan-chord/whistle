@@ -280,11 +280,11 @@ export class ScoreConfigManager {
   }
 
   /**
-   * CRITICAL: Convert beat position to pixel X coordinate
-   * Handles multi-staff layout correctly
+   * Convert beat position to pixel X coordinate using unified layout
    */
   beatToPixelX(beat: number, staffWidth: number, staffLine: number): number {
     const { staffLayout } = this.config;
+    const layout = this.getLayoutCalculations(staffWidth);
 
     // Calculate which measure on the current staff line
     const beatsPerStaffLine = staffLayout.measuresPerStaffLine * staffLayout.beatsPerMeasure;
@@ -293,13 +293,8 @@ export class ScoreConfigManager {
     const measureOnLine = Math.floor(beatOnLine / staffLayout.beatsPerMeasure);
     const beatInMeasure = beatOnLine % staffLayout.beatsPerMeasure;
 
-    // Calculate pixel position
-    const clefSpace = staffLayout.clefFontSize * 1.5;
-    const availableWidth = staffWidth - (staffLayout.staffMargin * 2) - clefSpace;
-    const measureWidth = availableWidth / staffLayout.measuresPerStaffLine;
-    const beatSpacing = measureWidth / staffLayout.beatsPerMeasure;
-
-    return staffLayout.staffMargin + clefSpace + (measureOnLine * measureWidth) + (beatInMeasure * beatSpacing);
+    // Calculate pixel position using unified layout
+    return layout.staffStart + (measureOnLine * layout.measureWidth) + (beatInMeasure * layout.beatSpacing);
   }
 
   /**
@@ -373,16 +368,42 @@ export class ScoreConfigManager {
    */
   private pixelXToBeat(pixelX: number, staffWidth: number, staffLine: number): number {
     const { staffLayout } = this.config;
-    const clefSpace = staffLayout.clefFontSize * 1.5;
-    const availableWidth = staffWidth - (staffLayout.staffMargin * 2) - clefSpace;
-    const measureWidth = availableWidth / staffLayout.measuresPerStaffLine;
-    const beatSpacing = measureWidth / staffLayout.beatsPerMeasure;
+    const layout = this.getLayoutCalculations(staffWidth);
 
-    const xFromStaffStart = pixelX - staffLayout.staffMargin - clefSpace;
-    const beatOnLine = xFromStaffStart / beatSpacing;
+    const xFromStaffStart = pixelX - layout.staffStart;
+    const beatOnLine = xFromStaffStart / layout.beatSpacing;
 
     const beatsPerStaffLine = staffLayout.measuresPerStaffLine * staffLayout.beatsPerMeasure;
     return (staffLine * beatsPerStaffLine) + beatOnLine;
+  }
+
+  /**
+   * Get unified layout calculations for consistent positioning
+   */
+  getLayoutCalculations(staffWidth: number): {
+    clefSpace: number;
+    staffStart: number;
+    staffEnd: number;
+    availableWidth: number;
+    measureWidth: number;
+    beatSpacing: number;
+  } {
+    const { staffLayout } = this.config;
+    const clefSpace = staffLayout.clefFontSize * 1.5;
+    const staffStart = staffLayout.staffMargin + clefSpace;
+    const staffEnd = staffWidth - staffLayout.staffMargin;
+    const availableWidth = staffEnd - staffStart;
+    const measureWidth = availableWidth / staffLayout.measuresPerStaffLine;
+    const beatSpacing = measureWidth / staffLayout.beatsPerMeasure;
+
+    return {
+      clefSpace,
+      staffStart,
+      staffEnd,
+      availableWidth,
+      measureWidth,
+      beatSpacing
+    };
   }
 
   /**
@@ -390,13 +411,11 @@ export class ScoreConfigManager {
    */
   getMeasurePositions(staffWidth: number): number[] {
     const { staffLayout } = this.config;
+    const layout = this.getLayoutCalculations(staffWidth);
     const positions: number[] = [];
-    const clefSpace = staffLayout.clefFontSize * 1.5;
-    const availableWidth = staffWidth - (staffLayout.staffMargin * 2) - clefSpace;
-    const measureWidth = availableWidth / staffLayout.measuresPerStaffLine;
 
     for (let i = 1; i <= staffLayout.measuresPerStaffLine; i++) {
-      positions.push(staffLayout.staffMargin + clefSpace + (i * measureWidth));
+      positions.push(layout.staffStart + (i * layout.measureWidth));
     }
 
     return positions;

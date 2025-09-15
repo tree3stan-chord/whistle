@@ -499,36 +499,18 @@
   }
   
   /**
-   * Update playhead position based on current beat
+   * Update playhead position based on current beat using unified coordinate system
    */
   function updatePlayheadFromBeat(beat: number) {
-    // Use fixed 4/4 time signature until TempoManager interface is fixed
-    const beatsPerMeasure = 4;
-    
-    // Calculate measure and beat within measure
-    const measureNum = Math.floor(beat / beatsPerMeasure) + 1;
-    const beatInMeasure = beat % beatsPerMeasure;
-    
-    // Calculate which staff line this measure is on
-    const lineIndex = Math.floor((measureNum - 1) / config.staffLayout.measuresPerStaffLine);
-    const measureInLine = ((measureNum - 1) % config.staffLayout.measuresPerStaffLine);
-    
-    // Calculate X position based on time, not notes
     const currentWidth = responsiveWidth || width;
-    const clefSpacing = CLEF_FONT_SIZE * 2.0;
-    const staffStart = STAFF_MARGIN + clefSpacing;
-    const staffEnd = currentWidth - STAFF_MARGIN;
-    const availableWidth = staffEnd - staffStart;
-    const measureWidth = availableWidth / config.staffLayout.measuresPerStaffLine;
-    const measureStart = staffStart + (measureInLine * measureWidth);
-    const beatSpacing = measureWidth / beatsPerMeasure;
-    const playheadX = measureStart + (beatInMeasure * beatSpacing);
-    
-    // Calculate Y position (staff line)
-    const staffY = scoreConfig.getStaffY(lineIndex);
+
+    // Use ScoreConfig's unified coordinate system
+    const staffLine = Math.floor(beat / (config.staffLayout.measuresPerStaffLine * config.staffLayout.beatsPerMeasure));
+    const x = scoreConfig.beatToPixelX(beat, currentWidth, staffLine);
+    const staffY = scoreConfig.getStaffY(staffLine);
     
     // Update playhead position
-    playheadPosition.x = playheadX;
+    playheadPosition.x = x;
     playheadPosition.y = staffY;
     playheadPosition.visible = true;
   }
@@ -682,12 +664,12 @@
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = Math.max(1, totalHeight / 200);
     
-    const staffStart = STAFF_MARGIN;
-    const staffEnd = currentWidth - STAFF_MARGIN;
+    const staffStart = config.staffLayout.staffMargin;
+    const staffEnd = currentWidth - config.staffLayout.staffMargin;
     
     // Draw 5 staff lines
     for (let i = 0; i < config.staffLayout.linesPerStaff; i++) {
-      const y = staffY - (LINE_SPACING * 2) + (i * LINE_SPACING);
+      const y = staffY - (config.staffLayout.lineSpacing * 2) + (i * config.staffLayout.lineSpacing);
       ctx.beginPath();
       ctx.moveTo(staffStart, y);
       ctx.lineTo(staffEnd, y);
@@ -811,16 +793,12 @@
     if (!ctx) return;
     
     const staffY = scoreConfig.getStaffY(lineIndex);
-    const clefSpacing = CLEF_FONT_SIZE * 2.0; // Match the spacing from drawStaffSystem
-    const staffStart = STAFF_MARGIN + clefSpacing;
-    const staffEnd = currentWidth - STAFF_MARGIN;
-    const availableWidth = staffEnd - staffStart;
-    const measureWidth = availableWidth / config.staffLayout.measuresPerStaffLine;
-    const measureStart = staffStart + (measureInLine * measureWidth);
+    const layout = scoreConfig.getLayoutCalculations(currentWidth);
+    const measureStart = layout.staffStart + (measureInLine * layout.measureWidth);
     
     // Draw notes within this measure
     let positionInMeasure = 0;
-    const noteSpacing = measureWidth / Math.max(notesInMeasure.length, config.staffLayout.beatsPerMeasure);
+    const noteSpacing = layout.measureWidth / Math.max(notesInMeasure.length, config.staffLayout.beatsPerMeasure);
     
     notesInMeasure.forEach(({ note, index }, noteIndex) => {
       const x = measureStart + (noteIndex * noteSpacing) + (noteSpacing / 2);
@@ -843,7 +821,7 @@
         staffPosition = calculateStaffPosition(note, noteClef);
       }
       
-      const y = staffY - (staffPosition * LINE_SPACING / 2);
+      const y = staffY - (staffPosition * config.staffLayout.lineSpacing / 2);
       
       // For the currently sustaining note, calculate live duration and note value
       let noteToRender = note;
