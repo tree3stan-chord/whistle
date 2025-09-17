@@ -278,11 +278,21 @@
   let lastNoteTime = 0;
   let currentSustainNote: MusicalNote | null = null;
   let sustainStartTime = 0;
-  const PITCH_TOLERANCE = 50; // Hz tolerance for same pitch
+  let lastAudioInputTime = 0;
+  const PITCH_TOLERANCE = 25; // Hz tolerance for same pitch - tightened for better note separation
+  const SUSTAIN_TIMEOUT = 500; // ms - end sustain if no input for this long
   const MIN_SUSTAIN_DURATION = 300; // ms minimum to register as sustained
 
   function addNoteDirectly(rawNote: MusicalNote) {
     const now = Date.now();
+
+    // Check if current sustain should timeout due to audio gap
+    if (currentSustainNote && lastAudioInputTime > 0 && (now - lastAudioInputTime) > SUSTAIN_TIMEOUT) {
+      console.log('🎵 Sustain timeout - ending due to audio gap');
+      currentSustainNote = null;
+    }
+
+    lastAudioInputTime = now;
 
     // Determine clef for this note
     const clef = registerDetector.analyzeNote(rawNote);
@@ -386,8 +396,8 @@
     const freqDiff = Math.abs(note1.frequency - note2.frequency);
     const midiDiff = Math.abs(note1.midiNumber - note2.midiNumber);
 
-    // Same if frequency is close OR MIDI note is same
-    return freqDiff <= PITCH_TOLERANCE || midiDiff <= 0.5;
+    // Same if frequency is close AND MIDI note is very close (within quarter tone)
+    return freqDiff <= PITCH_TOLERANCE && midiDiff <= 0.25;
   }
 
   function calculateNoteValue(duration: number): string {
