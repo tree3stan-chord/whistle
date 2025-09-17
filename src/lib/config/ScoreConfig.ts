@@ -218,8 +218,8 @@ export class ScoreConfigManager {
    * Update time signature to sync with TempoManager
    */
   updateTimeSignature(numerator: number, denominator: number): void {
-    this.config.timeSignature.numerator = numerator;
-    this.config.timeSignature.denominator = denominator;
+    this.config.tempo.timeSignature.numerator = numerator;
+    this.config.tempo.timeSignature.denominator = denominator;
     this.config.staffLayout.beatsPerMeasure = numerator; // Sync staff layout
     this.ensureConsistency();
     this.notifyListeners();
