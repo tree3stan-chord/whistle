@@ -53,6 +53,13 @@
   const scoreConfig = new ScoreConfigManager();
   let config = scoreConfig.getConfig();
 
+  // Sync ScoreConfig with TempoManager time signature
+  $: if (tempoManager) {
+    const tempoConfig = tempoManager.getConfig();
+    scoreConfig.updateTimeSignature(tempoConfig.timeSignature.numerator, tempoConfig.timeSignature.denominator);
+    config = scoreConfig.getConfig();
+  }
+
   // Calculate responsive dimensions
   function updateResponsiveDimensions() {
     viewportWidth = window.innerWidth;
@@ -484,10 +491,10 @@
       return;
     }
     
-    // Calculate elapsed time and current beat position
+    // Calculate elapsed time and current beat position using actual tempo
     const elapsedMs = Date.now() - recordingStartTime;
-    // Temporarily use fixed BPM until TempoManager interface is fixed
-    const bpm = 120;
+    const tempoConfig = tempoManager.getConfig();
+    const bpm = tempoConfig.bpm;
     const beatsPerMs = bpm / (60 * 1000);
     currentBeat = elapsedMs * beatsPerMs;
     
@@ -504,10 +511,25 @@
   function updatePlayheadFromBeat(beat: number) {
     const currentWidth = responsiveWidth || width;
 
-    // Use ScoreConfig's unified coordinate system
-    const staffLine = Math.floor(beat / (config.staffLayout.measuresPerStaffLine * config.staffLayout.beatsPerMeasure));
-    const x = scoreConfig.beatToPixelX(beat, currentWidth, staffLine);
-    const staffY = scoreConfig.getStaffY(staffLine);
+    // Use actual time signature from TempoManager
+    const tempoConfig = tempoManager.getConfig();
+    const beatsPerMeasure = tempoConfig.timeSignature.numerator;
+    const beatsPerStaffLine = config.staffLayout.measuresPerStaffLine * beatsPerMeasure;
+    const staffLine = Math.floor(beat / beatsPerStaffLine);
+
+    // Calculate position within the staff line
+    const beatOnLine = beat - (staffLine * beatsPerStaffLine);
+    const measureOnLine = Math.floor(beatOnLine / beatsPerMeasure);
+    const beatInMeasure = beatOnLine % beatsPerMeasure;
+
+    // Simple positioning calculation
+    const staffY = 150 + (staffLine * 120);
+    const staffStart = 120;
+    const staffEnd = currentWidth - 50;
+    const availableWidth = staffEnd - staffStart;
+    const measureWidth = availableWidth / config.staffLayout.measuresPerStaffLine;
+    const beatSpacing = measureWidth / beatsPerMeasure;
+    const x = staffStart + (measureOnLine * measureWidth) + (beatInMeasure * beatSpacing);
     
     // Update playhead position
     playheadPosition.x = x;
@@ -612,26 +634,35 @@
       // Use beat position for timing, same as playhead calculation
       const beatPosition = (note as any).beatPosition || 0;
 
-      // Use ScoreConfig's time translation utilities
-      const timePosition = scoreConfig.timestampToPosition(
-        (note as any).timestamp || Date.now(),
-        recordingStartTime,
-        currentWidth
-      );
+      // Use actual time signature from TempoManager
+      const tempoConfig = tempoManager.getConfig();
+      const beatsPerMeasure = tempoConfig.timeSignature.numerator;
+      const measuresPerLine = config.staffLayout.measuresPerStaffLine;
+      const measureNum = Math.floor(beatPosition / beatsPerMeasure);
+      const beatInMeasure = beatPosition % beatsPerMeasure;
+      const lineIndex = Math.floor(measureNum / measuresPerLine);
+      const measureInLine = measureNum % measuresPerLine;
 
-      const x = timePosition.pixelX;
-      const staffY = timePosition.pixelY;
+      const staffY = 150 + (lineIndex * 120); // Simple staff Y calculation
+      const staffStart = 120; // Simple clef space
+      const staffEnd = currentWidth - 50;
+      const availableWidth = staffEnd - staffStart;
+      const measureWidth = availableWidth / measuresPerLine;
+      const beatSpacing = measureWidth / beatsPerMeasure;
+      const x = staffStart + (measureInLine * measureWidth) + (beatInMeasure * beatSpacing);
 
       // Calculate Y position based on staff position
       const y = staffY - (note.staffPosition * (config.staffLayout.lineSpacing / 2));
 
-      // Debug note positioning (temporarily disabled to reduce spam)
-      if (false && index === $notes.length - 1) { // Only log the latest note
+      // Debug note positioning
+      if (index === $notes.length - 1) { // Only log the latest note
         console.log('🎨 Drawing note:', {
           index,
           noteName: note.noteName,
           beatPosition: beatPosition.toFixed(2),
-          staffPosition: note.staffPosition,
+          lineIndex,
+          measureNum,
+          beatInMeasure: beatInMeasure.toFixed(2),
           x: x.toFixed(1),
           y: y.toFixed(1),
           staffY: staffY

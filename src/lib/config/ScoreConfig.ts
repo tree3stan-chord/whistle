@@ -215,6 +215,17 @@ export class ScoreConfigManager {
   }
 
   /**
+   * Update time signature to sync with TempoManager
+   */
+  updateTimeSignature(numerator: number, denominator: number): void {
+    this.config.timeSignature.numerator = numerator;
+    this.config.timeSignature.denominator = denominator;
+    this.config.staffLayout.beatsPerMeasure = numerator; // Sync staff layout
+    this.ensureConsistency();
+    this.notifyListeners();
+  }
+
+  /**
    * Calculate derived values for rendering
    */
   getCalculatedValues() {
@@ -293,7 +304,6 @@ export class ScoreConfigManager {
     const measureOnLine = Math.floor(beatOnLine / staffLayout.beatsPerMeasure);
     const beatInMeasure = beatOnLine % staffLayout.beatsPerMeasure;
 
-    // Calculate pixel position using unified layout
     return layout.staffStart + (measureOnLine * layout.measureWidth) + (beatInMeasure * layout.beatSpacing);
   }
 
