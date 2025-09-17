@@ -107,7 +107,7 @@ export const DEFAULT_SCORE_CONFIG: ScoreConfig = {
     noteRadius: 4,
     maxNotesPerLine: 16, // fallback when not using measures
 
-    clefFontSize: 32,
+    clefFontSize: 120,
     noteNameFontSize: 8,
     measureNumberFontSize: 12
   },

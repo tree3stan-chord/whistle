@@ -732,7 +732,7 @@
     const clefToUse = clef || currentClef;
     
     // Scale the font size for different contexts (main clef vs change clef)
-    const scaledClefSize = CLEF_FONT_SIZE * scale;
+    const scaledClefSize = config.staffLayout.clefFontSize * scale;
     ctx.font = `${scaledClefSize}px serif`;
     ctx.fillStyle = '#000000';
     
@@ -744,12 +744,12 @@
       case 'treble':
         // Treble clef centers on G4 line (2nd line from bottom)
         // Since calculateStaffPosition uses B4 as middle line (position 0 = staffY), and G4 is -2 positions from B4
-        // G4 should be at staffY + LINE_SPACING (since G4 is one line below middle B4)
-        ctx.fillText('𝄞', x, staffY + LINE_SPACING);
+        // G4 should be at staffY + lineSpacing (since G4 is one line below middle B4)
+        ctx.fillText('𝄞', x, staffY + config.staffLayout.lineSpacing);
         break;
       case 'bass':
-        // Bass clef centers on F line (2nd line from bottom, -LINE_SPACING from center)
-        ctx.fillText('𝄢', x, staffY - LINE_SPACING);
+        // Bass clef centers on F line (2nd line from bottom, -lineSpacing from center)
+        ctx.fillText('𝄢', x, staffY - config.staffLayout.lineSpacing);
         break;
       case 'alto':
         // Alto clef centers exactly on middle line
