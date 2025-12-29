@@ -67,8 +67,8 @@ export class AutocorrelationPitchDetector {
       return null;
     }
 
-    // Confidence threshold for reliable pitch detection (increased from 0.1 to 0.3)
-    const CONFIDENCE_THRESHOLD = 0.3;
+    // Confidence threshold for reliable pitch detection (lowered to 0.15 for debugging)
+    const CONFIDENCE_THRESHOLD = 0.15;
 
     // Add debug info before confidence check
     console.log('🔍 Autocorr Before Confidence Check:', {

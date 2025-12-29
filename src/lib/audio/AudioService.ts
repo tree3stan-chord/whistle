@@ -31,14 +31,14 @@ export class AudioService {
   private noiseFloor = 0;
   private noiseFloorSamples: number[] = [];
   private readonly NOISE_FLOOR_WINDOW = 100; // samples to average for noise floor
-  private readonly SIGNAL_TO_NOISE_RATIO = 2.0; // signal must be 100% louder than noise floor (was 1.2)
+  private readonly SIGNAL_TO_NOISE_RATIO = 1.5; // signal must be 50% louder than noise floor (lowered for debugging)
 
   // Pitch stability filtering to reduce jitter
   private pitchHistory: { frequency: number; confidence: number; timestamp: number }[] = [];
   private readonly PITCH_STABILITY_WINDOW = 5; // frames to consider for stability
   private readonly PITCH_STABILITY_TOLERANCE = 30; // Hz tolerance for "same" pitch
-  private readonly MIN_STABLE_FRAMES = 5; // minimum frames before accepting a pitch (was 1 - now 250ms)
-  private readonly MIN_CONFIDENCE_FLOOR = 0.35; // minimum confidence to consider a pitch valid
+  private readonly MIN_STABLE_FRAMES = 3; // minimum frames before accepting a pitch (lowered for debugging)
+  private readonly MIN_CONFIDENCE_FLOOR = 0.2; // minimum confidence to consider a pitch valid (lowered for debugging)
   
   private config: AudioConfig = {
     deviceId: null,
@@ -63,12 +63,12 @@ export class AudioService {
 
     // Initialize pitch stability processor for smooth note detection
     this.pitchStabilityProcessor = new PitchStabilityProcessor({
-      stabilityWindowMs: 250,
-      minConfidence: 0.35,
-      highConfidence: 0.6,
-      sustainTolerance: 1.0,      // 1 semitone tolerance for sustain (allows vibrato)
-      changeThreshold: 1.5,        // 1.5 semitones to trigger new note
-      minFramesForNewNote: 5       // 5 frames = 250ms for balanced responsiveness
+      stabilityWindowMs: 150,      // Lowered from 250ms for faster response (debugging)
+      minConfidence: 0.2,          // Lowered from 0.35 for debugging
+      highConfidence: 0.5,         // Lowered from 0.6 for debugging
+      sustainTolerance: 1.5,       // Increased from 1.0 for more tolerance
+      changeThreshold: 2.0,        // Increased from 1.5 for more tolerance
+      minFramesForNewNote: 3       // Lowered from 5 for faster response (debugging)
     });
 
     // SAFETY: Ensure analysis is stopped on initialization
@@ -110,10 +110,33 @@ export class AudioService {
   async initialize(): Promise<void> {
     try {
       audioStateActions.setError(null);
-      
+
       // Clean up any existing resources first
       await this.cleanup();
-      
+
+      // Check browser support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.');
+      }
+
+      // Enumerate available audio devices first
+      console.log('Enumerating audio devices...');
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        console.log('Available audio input devices:', audioInputs.map(d => ({
+          deviceId: d.deviceId,
+          label: d.label || '(unlabeled - permissions may be needed)',
+          groupId: d.groupId
+        })));
+
+        if (audioInputs.length === 0) {
+          throw new Error('No microphone detected. Please connect a microphone and try again.');
+        }
+      } catch (enumError) {
+        console.warn('Could not enumerate devices (this is normal before permission grant):', enumError);
+      }
+
       // Step 1: Get MediaStream with simple constraints
       const constraints: MediaStreamConstraints = {
         audio: {
@@ -123,8 +146,8 @@ export class AudioService {
           noiseSuppression: false
         }
       };
-      
-      console.log('Requesting microphone access...');
+
+      console.log('Requesting microphone access with constraints:', constraints);
       this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       
       const track = this.mediaStream.getAudioTracks()[0];
@@ -199,8 +222,31 @@ export class AudioService {
       console.log('AudioService initialized successfully!');
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown audio error';
-      console.error('AudioService initialization failed:', errorMessage);
+      let errorMessage = 'Unknown audio error';
+
+      if (error instanceof Error) {
+        // Provide user-friendly messages for common errors
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          errorMessage = 'Microphone permission denied. Please allow microphone access and try again.';
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          errorMessage = 'No microphone found. Please connect a microphone and try again.';
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          errorMessage = 'Microphone is in use by another application. Please close other apps using the microphone.';
+        } else if (error.name === 'OverconstrainedError') {
+          errorMessage = 'Microphone constraints could not be satisfied. Try a different microphone.';
+        } else if (error.name === 'SecurityError') {
+          errorMessage = 'Microphone access blocked. This site must be served over HTTPS.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      console.error('AudioService initialization failed:', error);
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'unknown',
+        message: errorMessage
+      });
+
       audioStateActions.setError(errorMessage);
       await this.cleanup();
       throw new Error(`Audio initialization failed: ${errorMessage}`);
@@ -279,10 +325,19 @@ export class AudioService {
     console.log('🛑 Analysis loop stopped and cleared');
   }
 
+  // Debug counter for loop monitoring
+  private loopCallCount = 0;
+
   /**
    * Analysis loop for real-time pitch detection
    */
   private startAnalysisLoop = (): void => {
+    // DEBUG: Log every 100th call to see if loop is running
+    this.loopCallCount++;
+    if (this.loopCallCount % 100 === 1) {
+      console.log('🔁 Analysis loop heartbeat, call #' + this.loopCallCount);
+    }
+
     // SAFETY: Multiple checks to prevent runaway loops
     if (!this.isAnalyzing || !this.analyser || !this.pitchDetector) {
       console.log(`❌ Analysis loop stopped: analyzing=${this.isAnalyzing}, analyser=${!!this.analyser}, pitchDetector=${!!this.pitchDetector}`);
@@ -297,27 +352,22 @@ export class AudioService {
       return;
     }
 
-    // SAFETY: Verify recording state matches
-    if (!this.isAnalyzing) {
-      console.log('❌ Analysis loop: isAnalyzing false, stopping');
-      return;
-    }
-
     const currentTime = Date.now();
 
     // Throttle analysis to prevent excessive processing
     if (currentTime - this.lastAnalysisTime >= this.analysisInterval) {
       this.lastAnalysisTime = currentTime;
 
+      try {
       // Log every few seconds to show loop is running
       if (currentTime % 2000 < this.analysisInterval) {
         console.log('🔄 Analysis loop running - checking for pitch');
       }
 
       // Get time domain data
-      const bufferLength = this.analyser.fftSize;
+      const bufferLength = this.analyser!.fftSize;
       const dataArray = new Float32Array(bufferLength);
-      this.analyser.getFloatTimeDomainData(dataArray);
+      this.analyser!.getFloatTimeDomainData(dataArray);
 
       // Calculate RMS to see actual signal level
       const rms = Math.sqrt(dataArray.reduce((sum, x) => sum + x * x, 0) / dataArray.length);
@@ -358,36 +408,17 @@ export class AudioService {
       let processedData = dataArray;
       let voiceActivity = 0;
 
-      if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
-        try {
-          const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
-          processedData = isolationResult.processedAudio;
-          voiceActivity = isolationResult.vadResult.confidence;
+      // TEMPORARILY DISABLED: Vocal isolation is broken (always returns 0 voice activity)
+      // Skip straight to pitch detection using raw audio data
+      console.log('🔊 Skipping vocal isolation (disabled for debugging), using raw audio');
 
-          // Update vocal isolation state
-          audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
-          audioStateActions.setVoiceActivity(voiceActivity);
-
-          // Voice activity gate - require minimum voice confidence before pitch detection
-          const VOICE_ACTIVITY_THRESHOLD = 0.4;
-          if (voiceActivity < VOICE_ACTIVITY_THRESHOLD) {
-            // No voice detected - process null through stability processor to track silence
-            this.pitchStabilityProcessor?.process(null, 0, currentTime);
-            audioStateActions.setPitchResult(null);
-            if (currentTime % 3000 < this.analysisInterval) {
-              console.log('🔇 Voice activity below threshold:', voiceActivity.toFixed(2));
-            }
-            this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
-            return;
-          }
-        } catch (error) {
-          console.warn('Vocal isolation processing failed:', error);
-          // Fall back to using raw data if vocal isolation fails
-        }
-      }
+      // TODO: Fix VocalIsolationProcessor - noiseProfileReady never becomes true
+      // if (this.vocalIsolation && this.config.vocalIsolationEnabled) { ... }
       
       // Detect pitch using autocorrelation on time-domain data (or processed data if vocal isolation is enabled)
-      const rawPitchResult = this.pitchDetector.detectPitch(processedData);
+      console.log('🎤 Running pitch detection...');
+      const rawPitchResult = this.pitchDetector!.detectPitch(processedData);
+      console.log('🎤 Raw pitch result:', rawPitchResult);
 
       // GATE: Check raw confidence floor before any processing
       if (!rawPitchResult || rawPitchResult.confidence < this.MIN_CONFIDENCE_FLOOR) {
@@ -444,8 +475,13 @@ export class AudioService {
 
       // Update state with the stable pitch result
       audioStateActions.setPitchResult(finalPitchResult);
+
+      } catch (error) {
+        // Catch any errors in the analysis loop to prevent it from dying
+        console.error('❌ Analysis loop error:', error);
+      }
     }
-    
+
     // Continue loop
     this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
   };
