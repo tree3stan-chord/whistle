@@ -62,13 +62,14 @@ export class AudioService {
     this.setupSpeechCallbacks();
 
     // Initialize pitch stability processor for smooth note detection
+    // Tightened settings to filter transients - requires sustained pitch before emitting note
     this.pitchStabilityProcessor = new PitchStabilityProcessor({
-      stabilityWindowMs: 150,      // Lowered from 250ms for faster response (debugging)
-      minConfidence: 0.2,          // Lowered from 0.35 for debugging
-      highConfidence: 0.5,         // Lowered from 0.6 for debugging
-      sustainTolerance: 1.5,       // Increased from 1.0 for more tolerance
-      changeThreshold: 2.0,        // Increased from 1.5 for more tolerance
-      minFramesForNewNote: 3       // Lowered from 5 for faster response (debugging)
+      stabilityWindowMs: 300,      // 300ms window for stability checking
+      minConfidence: 0.45,         // Reject low-confidence detections
+      highConfidence: 0.7,         // High confidence for fast-path
+      sustainTolerance: 1.5,       // 1.5 semitones tolerance for sustain
+      changeThreshold: 2.0,        // 2 semitones to trigger new note
+      minFramesForNewNote: 6       // Require ~300ms sustained pitch (6 * 50ms)
     });
 
     // SAFETY: Ensure analysis is stopped on initialization

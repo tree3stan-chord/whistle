@@ -1414,30 +1414,39 @@
   }
   
   function calculateStaffPosition(note: MusicalNote, clef: ClefType): number {
-    // Calculate staff position relative to the current clef
+    // Calculate staff position using DIATONIC steps (not chromatic semitones)
+    // Staff positions follow the diatonic scale: C, D, E, F, G, A, B
+    // Each position is one line or space on the staff
     const midiNumber = note.midiNumber;
-    
-    // Staff positions are integers where:
-    // 0 = middle line of staff
-    // positive = above middle line
-    // negative = below middle line
-    // Each line/space is 1 position (not 2 semitones as incorrectly calculated before)
-    
+
+    // Map chromatic pitch class (0-11) to diatonic step (0-6)
+    // C=0, C#=0, D=1, D#=1, E=2, F=3, F#=3, G=4, G#=4, A=5, A#=5, B=6
+    const pitchClassToDiatonic = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+
+    const octave = Math.floor(midiNumber / 12) - 1; // MIDI octave (C4=60 is octave 4)
+    const pitchClass = midiNumber % 12;
+    const diatonic = pitchClassToDiatonic[pitchClass];
+
+    // Total diatonic position from C0 (7 notes per octave)
+    const totalDiatonic = octave * 7 + diatonic;
+
     if (clef === 'treble') {
       // Treble clef: B4 (MIDI 71) is the middle line (position 0)
-      // Each semitone step changes staff position by 0.5 (line to space or space to line)
-      const middleLineMidi = 71; // B4
-      return (midiNumber - middleLineMidi) * 0.5;
+      // B4 diatonic position = 4*7 + 6 = 34
+      const refDiatonic = 34;
+      return totalDiatonic - refDiatonic;
     } else if (clef === 'bass') {
-      // Bass clef: D3 (MIDI 50) is the middle line (position 0)  
-      const middleLineMidi = 50; // D3
-      return (midiNumber - middleLineMidi) * 0.5;
+      // Bass clef: D3 (MIDI 50) is the middle line (position 0)
+      // D3 diatonic position = 3*7 + 1 = 22
+      const refDiatonic = 22;
+      return totalDiatonic - refDiatonic;
     } else if (clef === 'alto') {
       // Alto clef: C4 (MIDI 60) is the middle line (position 0)
-      const middleLineMidi = 60; // C4
-      return (midiNumber - middleLineMidi) * 0.5;
+      // C4 diatonic position = 4*7 + 0 = 28
+      const refDiatonic = 28;
+      return totalDiatonic - refDiatonic;
     }
-    
+
     return 0;
   }
 
