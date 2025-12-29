@@ -19,6 +19,7 @@
   let responsiveHeight: number;
   
   let canvas: HTMLCanvasElement;
+  let staffContainer: HTMLDivElement;
   let ctx: CanvasRenderingContext2D;
   let animationId: number;
   
@@ -376,6 +377,19 @@
     // Calculate staff position with the determined clef
     const staffPosition = calculateStaffPosition(smoothedNote, clef);
 
+    // Debug: verify staff position calculation
+    console.log('📍 Staff Position Calc:', {
+      noteName: smoothedNote.noteName,
+      midiNumber: smoothedNote.midiNumber,
+      clef: clef,
+      staffPosition: staffPosition,
+      expectedLine: staffPosition === -4 ? 'E4 (bottom)' :
+                    staffPosition === -2 ? 'G4' :
+                    staffPosition === 0 ? 'B4 (middle)' :
+                    staffPosition === 2 ? 'D5' :
+                    staffPosition === 4 ? 'F5 (top)' : 'ledger/space'
+    });
+
     // Check if this continues the current sustain
     console.log('🔍 Sustain check:', {
       hasCurrentSustainNote: !!currentSustainNote,
@@ -706,6 +720,22 @@
     playheadPosition.x = x;
     playheadPosition.y = y;
     playheadPosition.visible = true;
+
+    // Auto-scroll to keep playhead visible
+    if (staffContainer && $isRecording) {
+      const containerHeight = staffContainer.clientHeight;
+      const scrollTop = staffContainer.scrollTop;
+      const playheadY = y;
+
+      // If playhead is below visible area, scroll down
+      const bottomMargin = 100; // Keep some margin at bottom
+      if (playheadY > scrollTop + containerHeight - bottomMargin) {
+        staffContainer.scrollTo({
+          top: playheadY - containerHeight + bottomMargin + 50,
+          behavior: 'smooth'
+        });
+      }
+    }
   }
 
   /**
@@ -750,16 +780,29 @@
   
   function drawStaff() {
     if (!ctx) return;
-    
+
     const currentWidth = responsiveWidth || width;
     const currentHeight = responsiveHeight || height;
-    
-    // Calculate exact staff lines needed - only what's necessary
+
+    // Calculate staff lines needed based on BOTH notes AND playhead position
+    // This ensures we always have a staff line for where the playhead is
+    const staffMargin = 120;
+    const usableWidth = currentWidth - staffMargin;
+    const staffLineWidth = usableWidth > 0 ? usableWidth : 1;
+
+    // Lines needed for playhead position (always need at least the line the playhead is on + 1 buffer)
+    const playheadStaffLine = Math.floor(streamPosition / staffLineWidth);
+    const linesForPlayhead = playheadStaffLine + 2; // +2 to have buffer ahead
+
+    // Lines needed for existing notes
     const totalNotes = $notes.length;
     const notesPerLine = 16;
-    const linesNeeded = totalNotes > 0 ? Math.ceil(totalNotes / notesPerLine) : 1;
-    
-    // Calculate needed height
+    const linesForNotes = totalNotes > 0 ? Math.ceil(totalNotes / notesPerLine) : 1;
+
+    // Use the maximum of both
+    const linesNeeded = Math.max(linesForPlayhead, linesForNotes, 1);
+
+    // Calculate needed height (120px per staff system)
     const neededHeight = Math.max(currentHeight, 200 + (linesNeeded - 1) * 150);
     
     // Update canvas size if needed
@@ -1455,10 +1498,10 @@
   export { canvas };
 </script>
 
-<div class="staff-container">
-  <canvas 
-    bind:this={canvas} 
-    width={responsiveWidth || 1200} 
+<div class="staff-container" bind:this={staffContainer}>
+  <canvas
+    bind:this={canvas}
+    width={responsiveWidth || 1200}
     height={responsiveHeight || 600}
     class="staff-canvas"
   ></canvas>
@@ -1471,7 +1514,7 @@
     left: 0;
     width: 100vw;
     height: calc(100vh - 60px);
-    overflow: hidden;
+    overflow: auto; /* Enable scrolling for multiple staff lines */
     padding: 0;
     background: #f8f9fa; /* Light gray background */
     z-index: 1; /* Keep staff below modals (which have z-index: 1000) */

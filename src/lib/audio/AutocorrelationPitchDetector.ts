@@ -152,41 +152,54 @@ export class AutocorrelationPitchDetector {
   }
 
   private findBestPeriod(autocorr: Float32Array): number {
-    let bestPeriod = -1;
-    let bestValue = 0;
+    // CRITICAL FIX: Find the FIRST significant peak, not the highest
+    // The autocorrelation has peaks at the fundamental period AND its multiples (subharmonics)
+    // We want the smallest period (highest frequency) that's significant = the fundamental
+
+    const PEAK_THRESHOLD = 0.3; // Minimum correlation to consider a peak
     let peakCount = 0;
 
-    // Find the highest peak in the autocorrelation
-    for (let period = this.minPeriod; period < this.maxPeriod; period++) {
-      if (autocorr[period] > bestValue) {
-        // Check if this is a local maximum
-        if (period > this.minPeriod && period < this.maxPeriod - 1) {
-          if (autocorr[period] > autocorr[period - 1] &&
-              autocorr[period] > autocorr[period + 1]) {
-            bestValue = autocorr[period];
-            bestPeriod = period;
-            peakCount++;
-          }
-        } else {
-          bestValue = autocorr[period];
-          bestPeriod = period;
-          peakCount++;
-        }
+    // Scan from low period (high freq) to high period (low freq)
+    // Return the FIRST peak that exceeds threshold
+    for (let period = this.minPeriod; period < this.maxPeriod - 1; period++) {
+      const value = autocorr[period];
+
+      // Check if this is a local maximum above threshold
+      if (value >= PEAK_THRESHOLD &&
+          value > autocorr[period - 1] &&
+          value > autocorr[period + 1]) {
+
+        peakCount++;
+        const frequency = this.sampleRate / period;
+
+        console.log('🔍 Autocorr Peak Found:', {
+          period: period,
+          value: value.toFixed(3),
+          frequency: frequency.toFixed(1) + 'Hz',
+          peakNumber: peakCount,
+          action: 'ACCEPTING_FIRST_PEAK'
+        });
+
+        return period; // Return the FIRST significant peak
       }
     }
 
-    console.log('🔍 Autocorr Peak Search:', {
-      bestPeriod: bestPeriod,
-      bestValue: bestValue.toFixed(3),
-      peakCount: peakCount,
-      threshold: 0.3,
-      willAccept: bestValue > 0.3
-    });
-
-    // With proper normalization, a clear pitch should have correlation > 0.3
-    if (bestValue > 0.3) {
-      return bestPeriod;
+    // No significant peak found - log why
+    let highestValue = 0;
+    let highestPeriod = -1;
+    for (let period = this.minPeriod; period < this.maxPeriod; period++) {
+      if (autocorr[period] > highestValue) {
+        highestValue = autocorr[period];
+        highestPeriod = period;
+      }
     }
+
+    console.log('🔍 Autocorr No Peak Above Threshold:', {
+      threshold: PEAK_THRESHOLD,
+      highestValue: highestValue.toFixed(3),
+      highestPeriod: highestPeriod,
+      wouldBeFreq: highestPeriod > 0 ? (this.sampleRate / highestPeriod).toFixed(1) + 'Hz' : 'N/A'
+    });
 
     return -1;
   }

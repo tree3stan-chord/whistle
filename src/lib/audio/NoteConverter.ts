@@ -54,21 +54,29 @@ export class NoteConverter {
     };
   }
 
+  // Map chromatic pitch class (0-11) to diatonic step (0-6)
+  // C=0, C#=0, D=1, D#=1, E=2, F=3, F#=3, G=4, G#=4, A=5, A#=5, B=6
+  private static readonly PITCH_CLASS_TO_DIATONIC = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+
   /**
    * Convert MIDI number to staff position for treble clef
+   * Uses DIATONIC positions (C,D,E,F,G,A,B), not chromatic semitones
    * 0 = middle line (B4), positive = above, negative = below
    */
   private static midiToStaffPosition(midiNumber: number): number {
-    // B4 = MIDI 71 = staff position 0 (middle line)
-    // Each semitone is not a full staff position - we need to map to staff lines/spaces
-    
-    // Convert MIDI to chromatic staff position, then adjust for treble clef
-    const b4Midi = 71; // B4 on middle line
-    const semitonesFromB4 = midiNumber - b4Midi;
-    
-    // Map semitones to staff positions (treble clef)
-    // This is a simplified mapping - in reality you'd want to handle key signatures
-    return Math.round(semitonesFromB4 * 0.5); // Approximate staff line/space mapping
+    // Convert MIDI to diatonic position
+    const octave = Math.floor(midiNumber / 12) - 1;
+    const pitchClass = midiNumber % 12;
+    const diatonic = this.PITCH_CLASS_TO_DIATONIC[pitchClass];
+
+    // Total diatonic position from C0 (7 notes per octave)
+    const totalDiatonic = octave * 7 + diatonic;
+
+    // Reference: B4 (MIDI 71) = position 0 (middle line of treble clef)
+    // B4 diatonic position = 4*7 + 6 = 34
+    const B4_DIATONIC = 34;
+
+    return totalDiatonic - B4_DIATONIC;
   }
 
   /**
