@@ -28,14 +28,16 @@
   let lastPanPoint = { x: 0, y: 0 };
   let transcriptionEngine: SimpleTranscriptionEngine;
   
-  // Playhead state
+  // Playhead state - STREAM-BASED design
   let playheadPosition = { x: 0, y: 0, visible: false };
   let currentActiveNoteIndex = -1;
+  let streamPosition = 0; // Visual position in the recording stream (0 to ∞)
   
-  // Time-based playhead tracking
+  // Unified timing system - single source of truth
   let recordingStartTime = 0;
   let playheadAnimationId: number | null = null;
   let currentBeat = 0;
+  let masterTimePosition = { beat: 0, timestamp: 0, elapsedMs: 0 };
   let registerDetector: RegisterDetector;
   let currentClef: ClefType = 'treble';
   let currentMeasure = 1;
@@ -193,15 +195,23 @@
   const PITCH_PROCESS_INTERVAL = 50; // ms - process pitch every 50ms for sustain updates
 
   $: {
-    if ($isRecording && $pitchResult) {
-      const now = Date.now();
+    if ($isRecording) {
+      if (!$pitchResult) {
+        // Debug: Log when recording but no pitch result
+        if (Date.now() % 1000 < 50) { // Log every ~1 second
+          console.log('⚠️ Recording active but no pitch result available');
+        }
+      } else {
+        const now = Date.now();
 
-      // Throttle pitch processing for sustained notes
-      if (now - lastPitchProcessTime >= PITCH_PROCESS_INTERVAL) {
-        lastPitchProcessTime = now;
-        console.log('🎤 Pitch detected:', $pitchResult.frequency?.toFixed(1) + 'Hz', 'confidence:', $pitchResult.confidence?.toFixed(3));
+        // Throttle pitch processing for sustained notes
+        if (now - lastPitchProcessTime >= PITCH_PROCESS_INTERVAL) {
+          lastPitchProcessTime = now;
+          console.log('🎤 Pitch detected:', $pitchResult.frequency?.toFixed(1) + 'Hz', 'confidence:', $pitchResult.confidence?.toFixed(3));
 
-        if ($pitchResult.frequency && $pitchResult.confidence > 0.4) {
+          // Require high confidence before creating notes (was 0.01, now 0.5)
+          const MIN_NOTE_CONFIDENCE = 0.5;
+          if ($pitchResult.frequency && $pitchResult.confidence > MIN_NOTE_CONFIDENCE) {
           const rawNote = NoteConverter.frequencyToNote($pitchResult.frequency, $pitchResult.confidence);
 
           if (NoteConverter.isVocalRange(rawNote.frequency)) {
@@ -216,7 +226,9 @@
             const finalDuration = now - sustainStartTime;
             console.log('🎵 Ending sustain due to silence:', currentSustainNote.noteName, finalDuration.toFixed(0) + 'ms');
             currentSustainNote = null;
+            stopSustainAnimation();
           }
+        }
         }
       }
     }
@@ -224,19 +236,28 @@
     updatePlayhead();
   }
 
-  // React to recording state changes
+  // React to recording state changes with guard to prevent cascading
+  let lastRecordingState = false;
   $: {
-    if ($isRecording) {
+    if ($isRecording && !lastRecordingState) {
       console.log('🔴 Recording started in StaffNotation');
-      // Start playhead animation
-      if (!playheadAnimationId) {
-        recordingStartTime = Date.now();
-        currentBeat = 0;
-        playheadPosition.visible = true;
-        animatePlayhead();
-      }
-    } else {
+      lastRecordingState = true;
+
+      // CRITICAL FIX: Clear all existing notes when starting new recording
+      console.log('🧹 Clearing existing notes to prevent runaway transcription');
+      audioStateActions.setNotes([]);
+      currentSustainNote = null;
+
+      // Start stream-based playhead
+      recordingStartTime = Date.now();
+      streamPosition = 0; // Start at beginning of stream
+      playheadPosition.visible = true;
+      updatePlayheadFromStreamPosition(streamPosition);
+      startStreamPlayhead();
+      console.log('🚀 Stream-based playhead started at position:', streamPosition);
+    } else if (!$isRecording && lastRecordingState) {
       console.log('⏹️ Recording stopped in StaffNotation');
+      lastRecordingState = false;
 
       // Finalize any current sustain
       if (currentSustainNote) {
@@ -265,12 +286,8 @@
         currentSustainNote = null;
       }
 
-      // Stop playhead animation
-      if (playheadAnimationId) {
-        cancelAnimationFrame(playheadAnimationId);
-        playheadAnimationId = null;
-      }
-      playheadPosition.visible = false;
+      // Stop stream playhead
+      stopStreamPlayhead();
       currentActiveNoteIndex = -1;
     }
   }
@@ -279,12 +296,71 @@
   let currentSustainNote: MusicalNote | null = null;
   let sustainStartTime = 0;
   let lastAudioInputTime = 0;
-  const PITCH_TOLERANCE = 25; // Hz tolerance for same pitch - tightened for better note separation
+  let sustainAnimationId: number | null = null;
+  const PITCH_TOLERANCE = 50; // Hz tolerance - tightened for accurate sustain (was 100)
+  const MIDI_TOLERANCE = 1.0; // semitones - only allow 1 semitone for vibrato (was 3.0)
   const SUSTAIN_TIMEOUT = 500; // ms - end sustain if no input for this long
   const MIN_SUSTAIN_DURATION = 300; // ms minimum to register as sustained
+  const NOTE_CHANGE_DEBOUNCE_MS = 150; // ms - minimum time between different notes
+
+  // Pitch smoothing to prevent erratic jumps
+  let pitchHistory: number[] = [];
+  const PITCH_HISTORY_SIZE = 5; // Keep last 5 pitch readings for smoothing
+
+  /**
+   * Start sustain animation for visual feedback
+   */
+  function startSustainAnimation() {
+    if (sustainAnimationId) return; // Already running
+
+    const animate = () => {
+      if (currentSustainNote && $isRecording) {
+        // Trigger canvas re-render for pulsing effect
+        drawStaff();
+        sustainAnimationId = requestAnimationFrame(animate);
+      } else {
+        sustainAnimationId = null;
+      }
+    };
+    sustainAnimationId = requestAnimationFrame(animate);
+  }
+
+  /**
+   * Stop sustain animation
+   */
+  function stopSustainAnimation() {
+    if (sustainAnimationId) {
+      cancelAnimationFrame(sustainAnimationId);
+      sustainAnimationId = null;
+    }
+  }
+
+  /**
+   * Smooth pitch using median filter to prevent erratic jumps
+   */
+  function smoothPitch(frequency: number): number {
+    pitchHistory.push(frequency);
+
+    // Keep only recent history
+    if (pitchHistory.length > PITCH_HISTORY_SIZE) {
+      pitchHistory.shift();
+    }
+
+    // Use median of recent readings for stability
+    const sorted = [...pitchHistory].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+
+    return sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  }
 
   function addNoteDirectly(rawNote: MusicalNote) {
     const now = Date.now();
+
+    // Apply pitch smoothing to reduce erratic jumps
+    const smoothedFrequency = smoothPitch(rawNote.frequency);
+    const smoothedNote = { ...rawNote, frequency: smoothedFrequency };
 
     // Check if current sustain should timeout due to audio gap
     if (currentSustainNote && lastAudioInputTime > 0 && (now - lastAudioInputTime) > SUSTAIN_TIMEOUT) {
@@ -295,10 +371,10 @@
     lastAudioInputTime = now;
 
     // Determine clef for this note
-    const clef = registerDetector.analyzeNote(rawNote);
+    const clef = registerDetector.analyzeNote(smoothedNote);
 
     // Calculate staff position with the determined clef
-    const staffPosition = calculateStaffPosition(rawNote, clef);
+    const staffPosition = calculateStaffPosition(smoothedNote, clef);
 
     // Check if this continues the current sustain
     console.log('🔍 Sustain check:', {
@@ -307,70 +383,102 @@
         noteName: currentSustainNote.noteName,
         frequency: currentSustainNote.frequency.toFixed(1)
       } : null,
-      newRawNote: {
-        noteName: rawNote.noteName,
-        frequency: rawNote.frequency.toFixed(1)
+      newSmoothedNote: {
+        noteName: smoothedNote.noteName,
+        frequency: smoothedNote.frequency.toFixed(1)
       },
-      isSamePitchResult: currentSustainNote ? isSamePitch(rawNote, currentSustainNote) : false
+      isSamePitchResult: currentSustainNote ? isSamePitch(smoothedNote, currentSustainNote) : false
     });
 
-    if (currentSustainNote && isSamePitch(rawNote, currentSustainNote)) {
-      // Extend existing note duration
+    // FUNDAMENTAL REDESIGN: Only ONE note can exist at the playhead position
+
+    if (currentSustainNote && isSamePitch(smoothedNote, currentSustainNote)) {
+      // Same pitch: extend the current note's duration at its CURRENT position
       const sustainDuration = now - sustainStartTime;
       const noteValue = calculateNoteValue(sustainDuration);
 
-      console.log('🎵 Extending sustain:', {
-        noteName: rawNote.noteName,
+      console.log('🎵 Extending sustain - playhead stays put:', {
+        noteName: smoothedNote.noteName,
         sustainDuration: sustainDuration.toFixed(0) + 'ms',
-        noteValue: noteValue
+        noteValue: noteValue,
+        visualTransition: 'eighth→quarter→half→whole',
+        staysAtPosition: currentSustainNote.beatPosition.toFixed(2),
+        playheadStick: 'PLAYHEAD_STAYS_WITH_SUSTAIN'
       });
 
-      // Update the existing note with new duration
+      // Update the existing note with new duration (position stays same as when it was created)
       const updatedNote = {
         ...currentSustainNote,
         duration: sustainDuration,
         noteValue: noteValue
+        // Keep original beatPosition - don't move the note
       };
 
-      // Update the note in the store
+      // Update in store
       const currentNotes = $notes;
       if (currentNotes.length > 0) {
         currentNotes[currentNotes.length - 1] = updatedNote;
         audioStateActions.setNotes([...currentNotes]);
+        currentSustainNote = updatedNote;
       }
 
-      return;
+      return; // Don't create new note
     }
 
-    // End previous sustain if exists
+    // Check minimum time between notes to prevent rapid-fire note creation
+    if (currentSustainNote && (now - sustainStartTime) < MIN_SUSTAIN_DURATION) {
+      console.log('🚫 Skipping note - too soon after previous note (preventing spam)');
+      return; // Don't create note if previous note was too recent
+    }
+
+    // Debounce rapid note changes - require gap before switching to a different note
+    if (currentSustainNote && (now - sustainStartTime) < NOTE_CHANGE_DEBOUNCE_MS) {
+      // Only skip if pitch actually changed
+      if (!isSamePitch(smoothedNote, currentSustainNote)) {
+        console.log('🚫 Debouncing rapid note change - waiting for stability');
+        return;
+      }
+    }
+
+    // Different pitch: create new note at wherever the playhead currently is
+    console.log('🎯 New pitch detected - placing note at current time position');
+
+    // End previous sustain
     if (currentSustainNote) {
       const finalDuration = now - sustainStartTime;
       console.log('🎵 Ending sustain:', currentSustainNote.noteName, finalDuration.toFixed(0) + 'ms');
     }
 
-    // Start new note/sustain
+    // Start new note/sustain at the current time position (where playhead is)
     sustainStartTime = now;
 
-    // Use the same timing source as the playhead
-    const noteCurrentBeat = currentBeat;
+    // STREAM-BASED: Place note at current stream position
+    const noteStreamPosition = streamPosition;
+
+    console.log('🎯 Note creation - at stream position:', {
+      streamPosition: streamPosition.toFixed(1),
+      noteStreamPosition: noteStreamPosition.toFixed(1),
+      noteFollowsStream: true
+    });
 
     // Create new note
     const completeNote: MusicalNote = {
-      ...rawNote,
+      ...smoothedNote,
       staffPosition,
       clef,
       noteIndex: $notes.length,
       timestamp: now,
-      beatPosition: noteCurrentBeat,
+      beatPosition: noteStreamPosition, // Store stream position (will update note interface later)
+      streamPosition: noteStreamPosition, // Add stream position property
       duration: MIN_SUSTAIN_DURATION, // Start with minimum duration
-      noteValue: 'quarter'
+      noteValue: 'eighth' // Start as eighth note, will grow with sustain
     };
 
     console.log('🎵 New note started:', {
       originalRawNote: {
-        noteName: rawNote.noteName,
-        frequency: rawNote.frequency.toFixed(1),
-        midiNumber: rawNote.midiNumber
+        noteName: smoothedNote.noteName,
+        frequency: smoothedNote.frequency.toFixed(1),
+        midiNumber: smoothedNote.midiNumber
       },
       finalCompleteNote: {
         noteName: completeNote.noteName,
@@ -378,38 +486,65 @@
         midiNumber: completeNote.midiNumber,
         staffPosition: completeNote.staffPosition
       },
-      beatPosition: currentBeat.toFixed(2)
+      beatPosition: noteStreamPosition.toFixed(2)
     });
 
     // Store as current sustain
     currentSustainNote = completeNote;
 
+    // Disable sustain animation to prevent visual artifacts
+    // startSustainAnimation();
+
     // Add to the notes store
     audioStateActions.addNote(completeNote);
 
-    // Update active note index for playhead
-    currentActiveNoteIndex = $notes.length - 1;
+    // Update tracking variables
+    currentActiveNoteIndex = $notes.length;  // Will be length after note is added
     lastNoteTime = now;
+
+    // STREAM-BASED: No artificial advancement - playhead continues smoothly
+    // Note is placed at current stream position, playhead keeps moving
+
+    console.log('🎯 Note placed in stream:', {
+      activeNoteIndex: currentActiveNoteIndex,
+      totalNotes: $notes.length + 1,
+      notePlacedAt: noteStreamPosition.toFixed(1),
+      streamContinues: 'PLAYHEAD_FLOWS_CONTINUOUSLY'
+    });
   }
 
   function isSamePitch(note1: MusicalNote, note2: MusicalNote): boolean {
-    const freqDiff = Math.abs(note1.frequency - note2.frequency);
+    // Use MIDI-based comparison only (semitone-aware)
+    // This handles vibrato correctly regardless of absolute frequency
     const midiDiff = Math.abs(note1.midiNumber - note2.midiNumber);
 
-    // Same if frequency is close AND MIDI note is very close (within quarter tone)
-    return freqDiff <= PITCH_TOLERANCE && midiDiff <= 0.25;
+    // Within tolerance = same note (allows for vibrato)
+    const isSameNote = midiDiff <= MIDI_TOLERANCE;
+
+    console.log('🔍 isSamePitch:', {
+      note1: note1.noteName,
+      note2: note2.noteName,
+      midiDiff: midiDiff.toFixed(2),
+      tolerance: MIDI_TOLERANCE,
+      result: isSameNote
+    });
+
+    return isSameNote;
   }
 
   function calculateNoteValue(duration: number): string {
-    const bpm = 120;
+    // Use actual BPM from TempoManager for accurate duration calculation
+    const tempoConfig = tempoManager.getConfig();
+    const bpm = tempoConfig.bpm;
     const beatDuration = (60 * 1000) / bpm; // ms per beat
     const ratio = duration / beatDuration;
 
-    if (ratio >= 3.5) return 'whole';
-    if (ratio >= 1.75) return 'half';
-    if (ratio >= 0.875) return 'quarter';
-    if (ratio >= 0.4375) return 'eighth';
-    return 'sixteenth';
+    // Progressive visual growth: eighth → quarter → half → whole
+    if (ratio >= 3.0) return 'whole';    // 3+ beats = whole note
+    if (ratio >= 1.5) return 'half';     // 1.5+ beats = half note
+    if (ratio >= 0.75) return 'quarter'; // 0.75+ beats = quarter note
+    if (ratio >= 0.375) return 'eighth'; // 0.375+ beats = eighth note
+    return 'sixteenth';                  // < 0.375 beats = sixteenth note
   }
 
   
@@ -495,28 +630,86 @@
   /**
    * Animate playhead based on elapsed time and BPM
    */
-  function animatePlayhead() {
-    if (!$isRecording) {
-      stopTimeBasedPlayhead();
-      return;
-    }
-    
-    // Calculate elapsed time and current beat position using actual tempo
-    const elapsedMs = Date.now() - recordingStartTime;
+  /**
+   * Master timing function - updates unified time position
+   */
+  function updateMasterTime() {
+    const now = Date.now();
+    const elapsedMs = now - recordingStartTime;
     const tempoConfig = tempoManager.getConfig();
     const bpm = tempoConfig.bpm;
     const beatsPerMs = bpm / (60 * 1000);
-    currentBeat = elapsedMs * beatsPerMs;
-    
-    // Calculate position on staff
-    updatePlayheadFromBeat(currentBeat);
-    
-    // Continue animation
-    playheadAnimationId = requestAnimationFrame(animatePlayhead);
+    const beat = elapsedMs * beatsPerMs;
+
+    // Update master time position
+    masterTimePosition = { beat, timestamp: now, elapsedMs };
+    currentBeat = beat; // Keep legacy variable for compatibility
   }
+
+  /**
+   * STREAM-BASED PLAYHEAD: Advances smoothly through the recording stream
+   */
+  function startStreamPlayhead() {
+    if (!$isRecording) return;
+
+    // Calculate stream advancement rate (pixels per second)
+    const advancementRate = 50; // 50 pixels per second - adjust for comfortable reading
+    const elapsedMs = Date.now() - recordingStartTime;
+    const elapsedSeconds = elapsedMs / 1000;
+
+    // Update stream position
+    streamPosition = elapsedSeconds * advancementRate;
+
+    // Update visual playhead position
+    updatePlayheadFromStreamPosition(streamPosition);
+
+    // Continue animation
+    playheadAnimationId = requestAnimationFrame(startStreamPlayhead);
+  }
+
+  function stopStreamPlayhead() {
+    if (playheadAnimationId) {
+      cancelAnimationFrame(playheadAnimationId);
+      playheadAnimationId = null;
+    }
+    playheadPosition.visible = false;
+  }
+
   
   /**
-   * Update playhead position based on current beat using unified coordinate system
+   * Update playhead position based on stream position (pixels from start)
+   */
+  function updatePlayheadFromStreamPosition(position: number) {
+    const currentWidth = responsiveWidth || width;
+    const staffMargin = 120; // Left margin for clef
+    const rightMargin = 50;
+    const usableWidth = currentWidth - staffMargin - rightMargin;
+
+    // Calculate which staff line we're on
+    const staffLineWidth = usableWidth;
+    const currentStaffLine = Math.floor(position / staffLineWidth);
+    const positionOnLine = position % staffLineWidth;
+
+    // Calculate playhead coordinates
+    const x = staffMargin + positionOnLine;
+    const y = 150 + (currentStaffLine * 120); // 120px between staff lines
+
+    console.log('🎯 Stream playhead position:', {
+      streamPosition: position.toFixed(1),
+      staffLine: currentStaffLine,
+      positionOnLine: positionOnLine.toFixed(1),
+      x: x.toFixed(1),
+      y: y
+    });
+
+    // Update playhead position
+    playheadPosition.x = x;
+    playheadPosition.y = y;
+    playheadPosition.visible = true;
+  }
+
+  /**
+   * Legacy function - Update playhead position based on current beat using unified coordinate system
    */
   function updatePlayheadFromBeat(beat: number) {
     const currentWidth = responsiveWidth || width;
@@ -540,7 +733,8 @@
     const measureWidth = availableWidth / config.staffLayout.measuresPerStaffLine;
     const beatSpacing = measureWidth / beatsPerMeasure;
     const x = staffStart + (measureOnLine * measureWidth) + (beatInMeasure * beatSpacing);
-    
+
+
     // Update playhead position
     playheadPosition.x = x;
     playheadPosition.y = staffY;
@@ -590,8 +784,8 @@
       drawStaffSystem(line, currentWidth, neededHeight);
     }
 
-    // Draw notes using multi-staff layout
-    drawNotesMultiline(currentWidth, neededHeight, linesNeeded);
+    // Draw notes using stream-based layout
+    drawNotesStream(currentWidth, neededHeight, linesNeeded);
     
     // Draw playhead if visible
     if (playheadPosition.visible) {
@@ -640,21 +834,24 @@
   function drawAllNotes(currentWidth: number) {
     if (!ctx || $notes.length === 0) return;
 
-    $notes.forEach((note, index) => {
-      // Use beat position for timing, same as playhead calculation
-      const beatPosition = (note as any).beatPosition || 0;
+    // CORRECT APPROACH: Draw all notes at their proper positions
+    // But ONLY show notes that are at or behind the current playhead position
 
-      // Use actual time signature from TempoManager
-      const tempoConfig = tempoManager.getConfig();
-      const beatsPerMeasure = tempoConfig.timeSignature.numerator;
-      const measuresPerLine = config.staffLayout.measuresPerStaffLine;
-      const measureNum = Math.floor(beatPosition / beatsPerMeasure);
-      const beatInMeasure = beatPosition % beatsPerMeasure;
+    const tempoConfig = tempoManager.getConfig();
+    const beatsPerMeasure = tempoConfig.timeSignature.numerator;
+    const measuresPerLine = config.staffLayout.measuresPerStaffLine;
+
+    $notes.forEach((note, index) => {
+      const noteBeatPosition = (note as any).beatPosition || 0;
+
+      // Calculate note's actual position on staff
+      const measureNum = Math.floor(noteBeatPosition / beatsPerMeasure);
+      const beatInMeasure = noteBeatPosition % beatsPerMeasure;
       const lineIndex = Math.floor(measureNum / measuresPerLine);
       const measureInLine = measureNum % measuresPerLine;
 
-      const staffY = 150 + (lineIndex * 120); // Simple staff Y calculation
-      const staffStart = 120; // Simple clef space
+      const staffY = 150 + (lineIndex * 120);
+      const staffStart = 120;
       const staffEnd = currentWidth - 50;
       const availableWidth = staffEnd - staffStart;
       const measureWidth = availableWidth / measuresPerLine;
@@ -664,25 +861,25 @@
       // Calculate Y position based on staff position
       const y = staffY - (note.staffPosition * (config.staffLayout.lineSpacing / 2));
 
-      // Debug note positioning
-      if (index === $notes.length - 1) { // Only log the latest note
-        console.log('🎨 Drawing note:', {
-          index,
-          noteName: note.noteName,
-          beatPosition: beatPosition.toFixed(2),
-          lineIndex,
-          measureNum,
-          beatInMeasure: beatInMeasure.toFixed(2),
-          x: x.toFixed(1),
-          y: y.toFixed(1),
-          staffY: staffY
-        });
-      }
+      // Determine if this is the active note (closest to but not ahead of playhead)
+      const isActive = (index === $notes.length - 1) && (noteBeatPosition <= currentBeat);
 
-      // Draw note
-      ctx.fillStyle = '#000000';
+      // DEBUG: Log every note being drawn
+      console.log('🎨 DRAWING NOTE:', {
+        index,
+        noteName: note.noteName,
+        noteBeatPosition: noteBeatPosition.toFixed(3),
+        currentPlayheadBeat: currentBeat.toFixed(3),
+        difference: (noteBeatPosition - currentBeat).toFixed(3),
+        isAheadOfPlayhead: noteBeatPosition > currentBeat,
+        xPosition: x.toFixed(1),
+        shouldNotBeVisible: noteBeatPosition > currentBeat ? 'YES - BUG!' : 'no'
+      });
+
+      // Draw note with different style if active
+      ctx.fillStyle = isActive ? '#FF0000' : '#000000'; // Active note in red
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.arc(x, y, isActive ? 6 : 4, 0, 2 * Math.PI); // Active note slightly larger
       ctx.fill();
 
       // Draw note name below staff
@@ -690,8 +887,8 @@
       ctx.textAlign = 'center';
       ctx.fillText(note.noteName, x, staffY + 40);
 
-      // Also draw beat position for debugging
-      ctx.fillText('♩' + beatPosition.toFixed(1), x, staffY + 52);
+      // Draw beat position for debugging
+      ctx.fillText('♩' + noteBeatPosition.toFixed(1), x, staffY + 52);
     });
   }
 
@@ -701,9 +898,9 @@
     // Calculate Y position for this staff system
     const staffY = scoreConfig.getStaffY(lineIndex);
     
-    // Draw staff lines
+    // Draw staff lines with consistent thickness
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = Math.max(1, totalHeight / 200);
+    ctx.lineWidth = 1; // Always 1px thick, regardless of total height
     
     const staffStart = config.staffLayout.staffMargin;
     const staffEnd = currentWidth - config.staffLayout.staffMargin;
@@ -797,33 +994,128 @@
     ctx.stroke();
   }
 
+  /**
+   * STREAM-BASED NOTE RENDERING: Simple left-to-right positioning
+   */
+  function drawNotesStream(currentWidth: number, totalHeight: number, linesNeeded: number) {
+    if (!ctx || $notes.length === 0) return;
+
+    const staffMargin = 120; // Left margin for clef
+    const rightMargin = 50;
+    const usableWidth = currentWidth - staffMargin - rightMargin;
+    const staffLineWidth = usableWidth;
+
+    $notes.forEach((note, index) => {
+      // Get stream position from note (stored in beatPosition for now)
+      const streamPos = note.streamPosition || note.beatPosition || 0;
+
+      // Calculate which staff line and position
+      const staffLineIndex = Math.floor(streamPos / staffLineWidth);
+      const positionOnLine = streamPos % staffLineWidth;
+
+      // Calculate coordinates
+      const x = staffMargin + positionOnLine;
+      const y = 150 + (staffLineIndex * 120); // 120px between staff lines
+      const staffY = y;
+
+      // Draw note at stream position
+      drawSingleNote(note, x, staffY, index);
+    });
+  }
+
+  /**
+   * Draw a single note at specified coordinates
+   */
+  function drawSingleNote(note: any, x: number, staffY: number, index: number) {
+    if (!ctx) return;
+
+    // Calculate note Y position based on pitch
+    const pitchOffset = note.staffPosition * (config.staffLayout.lineSpacing / 2);
+    const noteY = staffY - pitchOffset;
+
+    // Use proper note symbol drawing with sustain support
+    const isCurrentSustain = (currentSustainNote && index === $notes.length - 1);
+
+    // Special highlight for currently sustaining note
+    if (isCurrentSustain) {
+      // Draw pulsing background for sustaining note
+      const pulseIntensity = Math.sin(Date.now() / 200) * 0.3 + 0.7; // Pulsing between 0.4-1.0
+      ctx.fillStyle = `rgba(255, 100, 100, ${pulseIntensity * 0.3})`;
+      ctx.beginPath();
+      ctx.ellipse(x, noteY, NOTE_RADIUS * 2, NOTE_RADIUS * 1.6, 0, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    // Draw the actual note symbol with proper note value rendering
+    drawNoteSymbol(x, noteY, note);
+
+    // Draw ledger lines if needed
+    drawLedgerLines(x, staffY, note.staffPosition);
+
+    // Enhanced debugging info for sustaining notes
+    ctx.fillStyle = isCurrentSustain ? '#FF4444' : '#666666';
+    ctx.font = '12px monospace';
+    ctx.fillText(note.noteName, x - 10, staffY + 40);
+
+    // Show note value and duration for sustaining note
+    if (isCurrentSustain) {
+      ctx.fillStyle = '#FF4444';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText(`${note.noteValue} (${note.duration}ms)`, x - 20, staffY + 55);
+
+      // Draw sustain progress bar
+      const sustainProgress = Math.min(note.duration / 4000, 1.0); // 4 second max
+      const barWidth = NOTE_RADIUS * 4;
+      const barHeight = 4;
+      const barX = x - barWidth / 2;
+      const barY = staffY + 70;
+
+      // Background bar
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+
+      // Progress bar
+      ctx.fillStyle = '#FF4444';
+      ctx.fillRect(barX, barY, barWidth * sustainProgress, barHeight);
+
+      // Sustain level indicator
+      const sustainSteps = ['♬', '♩', '♫', '𝅗𝅥']; // sixteenth, eighth, quarter, half
+      const stepIndex = Math.min(Math.floor(sustainProgress * 4), 3);
+      ctx.fillStyle = '#FF4444';
+      ctx.font = 'bold 16px serif';
+      ctx.fillText(sustainSteps[stepIndex], x + NOTE_RADIUS * 2.5, noteY);
+    }
+  }
+
+  // Legacy function for backwards compatibility
   function drawNotesMultiline(currentWidth: number, totalHeight: number, linesNeeded: number) {
     if (!ctx || $notes.length === 0) return;
-    
+
     // Group notes by measure for proper line placement
     const notesByMeasure = new Map<number, any[]>();
     let measureNum = 1;
     let noteCount = 0;
-    
+
     $notes.forEach((note, index) => {
+
       if (!notesByMeasure.has(measureNum)) {
         notesByMeasure.set(measureNum, []);
       }
       notesByMeasure.get(measureNum)!.push({ note, index });
-      
+
       noteCount++;
       if (noteCount >= config.staffLayout.beatsPerMeasure) {
         measureNum++;
         noteCount = 0;
       }
     });
-    
+
     // Draw notes on appropriate staff lines
     notesByMeasure.forEach((notesInMeasure, measure) => {
       const lineIndex = Math.floor((measure - 1) / config.staffLayout.measuresPerStaffLine);
       const measureInLine = ((measure - 1) % config.staffLayout.measuresPerStaffLine);
-      
-      
+
+
       if (lineIndex < linesNeeded) {
         drawMeasureNotes(notesInMeasure, lineIndex, measureInLine, currentWidth);
       }

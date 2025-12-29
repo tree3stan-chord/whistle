@@ -19,11 +19,11 @@ export class YinPitchDetector {
   constructor(sampleRate: number, bufferSize: number = 2048, config?: Partial<YinConfig>) {
     this.sampleRate = sampleRate;
     this.bufferSize = bufferSize;
-    this.threshold = config?.threshold ?? 0.3; // More lenient threshold for vocals
+    this.threshold = config?.threshold ?? 0.15; // Stricter threshold for better accuracy
     
-    // Frequency range constraints (tighter vocal range)
+    // Frequency range constraints (vocal range)
     this.minFreq = config?.minFreq ?? 80;   // ~E2 (lowest typical vocal)
-    this.maxFreq = config?.maxFreq ?? 800;  // ~G5 (prevent octave confusion)
+    this.maxFreq = config?.maxFreq ?? 800;  // ~G5 (optimal vocal range, prevents octave confusion)
     
     // Calculate period bounds from frequency range
     this.maxPeriod = Math.floor(this.sampleRate / this.minFreq);
@@ -43,6 +43,24 @@ export class YinPitchDetector {
     if (audioBuffer.length < this.bufferSize) {
       return null;
     }
+
+    // Check signal level
+    const rms = Math.sqrt(audioBuffer.reduce((sum, x) => sum + x * x, 0) / audioBuffer.length);
+    const signalLevel = rms * 100; // Convert to percentage
+
+    // Log signal level periodically for debugging
+    if (Date.now() % 2000 < 100) {
+      console.log('🔍 YIN Signal Level:', {
+        rms: rms.toFixed(6),
+        signalLevel: signalLevel.toFixed(2) + '%',
+        threshold: '8.0%',
+        decision: signalLevel >= 8.0 ? 'PROCESS' : 'REJECT_TOO_QUIET'
+      });
+    }
+
+    if (signalLevel < 8.0) { // Increased threshold to reduce phantom notes
+      return null; // Too quiet
+    }
     
     // Step 1: Calculate difference function
     this.calculateDifferenceFunction(audioBuffer);
@@ -59,13 +77,30 @@ export class YinPitchDetector {
     
     // Step 4: Parabolic interpolation for sub-sample accuracy
     const betterTau = this.parabolicInterpolation(tauEst);
-    
+
     // Calculate frequency and confidence
     const frequency = this.sampleRate / betterTau;
     const confidence = 1 - this.yinBuffer[tauEst];
-    
+
+    // Always log YIN detection details to see what's happening
+    console.log('🔍 YIN Detection:', {
+      rawTau: tauEst,
+      interpolatedTau: betterTau.toFixed(2),
+      frequency: frequency.toFixed(1) + 'Hz',
+      confidence: confidence.toFixed(3),
+      signalLevel: signalLevel.toFixed(2) + '%',
+      minFreq: this.minFreq,
+      maxFreq: this.maxFreq,
+      validRange: frequency >= this.minFreq && frequency <= this.maxFreq,
+      threshold: this.threshold,
+      yinValue: this.yinBuffer[tauEst].toFixed(3),
+      sampleRate: this.sampleRate,
+      bufferSize: this.bufferSize
+    });
+
     // Validate frequency is in expected range
     if (frequency < this.minFreq || frequency > this.maxFreq) {
+      console.log('❌ YIN: Frequency out of range:', frequency.toFixed(1) + 'Hz');
       return null;
     }
     
@@ -87,11 +122,9 @@ export class YinPitchDetector {
     for (let tau = 0; tau < this.maxPeriod; tau++) {
       this.yinBuffer[tau] = 0;
       
-      for (let i = 0; i < this.maxPeriod; i++) {
-        if (i + tau < audioBuffer.length) {
-          delta = audioBuffer[i] - audioBuffer[i + tau];
-          this.yinBuffer[tau] += delta * delta;
-        }
+      for (let i = 0; i < this.bufferSize - tau; i++) {
+        delta = audioBuffer[i] - audioBuffer[i + tau];
+        this.yinBuffer[tau] += delta * delta;
       }
     }
   }

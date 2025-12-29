@@ -46,7 +46,7 @@ export class VoiceActivityDetector {
     this.fftSize = fftSize;
     
     this.config = {
-      energyThreshold: 0.02,
+      energyThreshold: 0.04,  // Increased from 0.02 to reduce false positives
       spectralThreshold: 2000,
       minVoiceDuration: 100,
       hangoverTime: 200,
@@ -75,7 +75,8 @@ export class VoiceActivityDetector {
     
     // Basic thresholding
     const energyAboveThreshold = energy > this.adaptiveEnergyThreshold;
-    const spectralInVoiceRange = spectralCentroid > 200 && spectralCentroid < 8000;
+    // Tightened spectral range: 300-3000Hz (was 200-8000Hz) to focus on vocal fundamentals/harmonics
+    const spectralInVoiceRange = spectralCentroid > 300 && spectralCentroid < 3000;
     
     // Combine features for initial detection
     let isVoiceCandidate = energyAboveThreshold && 

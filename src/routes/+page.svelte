@@ -20,6 +20,16 @@
   $: isInitialized = $audioState.isInitialized;
   $: error = $audioState.error;
   $: deviceLabel = $audioState.deviceLabel;
+
+  // DEBUG: Log reactive state changes
+  $: {
+    console.log('🔍 UI State:', {
+      isInitialized: isInitialized,
+      isRecording: isRecording,
+      error: error,
+      audioService: !!audioService
+    });
+  }
   $: currentPitch = $pitchResult;
   $: currentTranscript = $speechTranscript;
   $: speechListening = $isSpeechListening;
@@ -52,20 +62,28 @@
   }
 
   async function startRecording() {
-    if (!audioService) return;
-    
+    console.log('🔵 UI: Start Recording button clicked');
+
+    if (!audioService) {
+      console.log('❌ UI: No audioService available');
+      return;
+    }
+
     try {
       if (!isInitialized) {
+        console.log('🔧 UI: Audio not initialized, initializing first...');
         await audioService.initialize();
       }
-      
+
+      console.log('🎵 UI: Starting recording timing and audio recording...');
+
       // Start timing before recording
       audioService.startRecordingTiming();
       await audioService.startRecording();
-      
-      console.log('Recording started with tempo timing');
+
+      console.log('✅ UI: Recording started with tempo timing');
     } catch (err) {
-      console.error('Failed to start recording:', err);
+      console.error('❌ UI: Failed to start recording:', err);
     }
   }
 

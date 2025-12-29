@@ -25,7 +25,7 @@ export const audioConfig = writable<AudioConfig>({
   sampleRate: 48000,
   bufferSize: 4096,
   minFrequency: 60,
-  maxFrequency: 2000,
+  maxFrequency: 1200, // Fixed from 2000Hz - prevents octave confusion
   vocalIsolationEnabled: true
 });
 

@@ -2,10 +2,11 @@
  * Clean AudioService implementation with proper lifecycle management
  * Solves the AudioContext conflicts that plagued the vanilla JS version
  */
-import { YinPitchDetector } from './YinPitchDetector.js';
+import { AutocorrelationPitchDetector } from './AutocorrelationPitchDetector.js';
 import { SpeechService } from './SpeechService.js';
 import { VocalIsolationProcessor } from './VocalIsolationProcessor.js';
 import { TempoManager } from './TempoManager.js';
+import { PitchStabilityProcessor } from './PitchStabilityProcessor.js';
 import { audioStateActions } from '../stores/audioStore.js';
 import type { AudioConfig, PitchDetectionResult } from './types.js';
 
@@ -15,22 +16,36 @@ export class AudioService {
   private microphone: MediaStreamAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
-  private pitchDetector: YinPitchDetector | null = null;
+  private pitchDetector: AutocorrelationPitchDetector | null = null;
   private speechService: SpeechService | null = null;
   private vocalIsolation: VocalIsolationProcessor | null = null;
+  private pitchStabilityProcessor: PitchStabilityProcessor | null = null;
   private tempoManager: TempoManager;
   
   private animationFrameId: number | null = null;
   private isAnalyzing = false;
   private lastAnalysisTime = 0;
   private analysisInterval = 50; // Analyze every 50ms for stability
+
+  // Noise floor tracking for phantom note prevention
+  private noiseFloor = 0;
+  private noiseFloorSamples: number[] = [];
+  private readonly NOISE_FLOOR_WINDOW = 100; // samples to average for noise floor
+  private readonly SIGNAL_TO_NOISE_RATIO = 2.0; // signal must be 100% louder than noise floor (was 1.2)
+
+  // Pitch stability filtering to reduce jitter
+  private pitchHistory: { frequency: number; confidence: number; timestamp: number }[] = [];
+  private readonly PITCH_STABILITY_WINDOW = 5; // frames to consider for stability
+  private readonly PITCH_STABILITY_TOLERANCE = 30; // Hz tolerance for "same" pitch
+  private readonly MIN_STABLE_FRAMES = 5; // minimum frames before accepting a pitch (was 1 - now 250ms)
+  private readonly MIN_CONFIDENCE_FLOOR = 0.35; // minimum confidence to consider a pitch valid
   
   private config: AudioConfig = {
     deviceId: null,
     sampleRate: 48000,
-    bufferSize: 2048,  // Smaller buffer for more responsive detection
-    minFrequency: 80,   // Tighter vocal range - E2 (male low)
-    maxFrequency: 800,  // G5 (female high) - prevents octave jumping
+    bufferSize: 4096,  // Larger buffer for better frequency resolution
+    minFrequency: 80,   // E2 (male low)
+    maxFrequency: 800,  // G5 (optimal vocal range, prevents octave confusion)
     vocalIsolationEnabled: true
   };
 
@@ -38,13 +53,27 @@ export class AudioService {
     if (config) {
       this.config = { ...this.config, ...config };
     }
-    
+
     // Initialize tempo manager
     this.tempoManager = new TempoManager();
-    
+
     // Initialize speech service
     this.speechService = new SpeechService();
     this.setupSpeechCallbacks();
+
+    // Initialize pitch stability processor for smooth note detection
+    this.pitchStabilityProcessor = new PitchStabilityProcessor({
+      stabilityWindowMs: 250,
+      minConfidence: 0.35,
+      highConfidence: 0.6,
+      sustainTolerance: 1.0,      // 1 semitone tolerance for sustain (allows vibrato)
+      changeThreshold: 1.5,        // 1.5 semitones to trigger new note
+      minFramesForNewNote: 5       // 5 frames = 250ms for balanced responsiveness
+    });
+
+    // SAFETY: Ensure analysis is stopped on initialization
+    this.isAnalyzing = false;
+    console.log('🔧 AudioService initialized - analysis STOPPED until startRecording()');
   }
 
   /**
@@ -90,7 +119,7 @@ export class AudioService {
         audio: {
           deviceId: this.config.deviceId ? { exact: this.config.deviceId } : undefined,
           echoCancellation: false,
-          autoGainControl: false,
+          autoGainControl: true,  // Enable auto gain control for proper levels
           noiseSuppression: false
         }
       };
@@ -125,7 +154,7 @@ export class AudioService {
       this.analyser.smoothingTimeConstant = 0; // No smoothing for pitch detection
       
       this.gainNode = this.audioContext.createGain();
-      this.gainNode.gain.setValueAtTime(1.0, this.audioContext.currentTime);
+      this.gainNode.gain.setValueAtTime(2.0, this.audioContext.currentTime); // Moderate boost to avoid noise amplification
       
       // Step 4: Create MediaStreamSource and connect
       console.log('Creating MediaStreamSource...');
@@ -137,31 +166,27 @@ export class AudioService {
       
       console.log('Audio pipeline connected successfully!');
       
-      // Step 5: Initialize pitch detector
-      this.pitchDetector = new YinPitchDetector(
+      // Step 5: Initialize autocorrelation pitch detector for accurate pitch tracking
+      this.pitchDetector = new AutocorrelationPitchDetector(
         this.audioContext.sampleRate,
-        this.config.bufferSize,
-        {
-          minFreq: this.config.minFrequency,
-          maxFreq: this.config.maxFrequency
-        }
+        this.config.bufferSize
       );
       
-      // Step 6: Initialize vocal isolation processor
+      // Step 6: Initialize vocal isolation processor with tuned parameters for voice detection
       this.vocalIsolation = new VocalIsolationProcessor(
         this.audioContext.sampleRate,
         this.config.bufferSize,
         {
           enabled: this.config.vocalIsolationEnabled,
           vad: {
-            energyThreshold: 0.02,
-            minVoiceDuration: 100,
-            hangoverTime: 200
+            energyThreshold: 0.05, // Increased to reduce false positives
+            minVoiceDuration: 150, // Longer minimum to avoid transients
+            hangoverTime: 300 // Longer hangover for sustained notes
           },
           spectralSubtraction: {
-            alpha: 2.0,
-            beta: 0.05,
-            noiseUpdateRate: 0.05
+            alpha: 1.5, // Reduced aggression
+            beta: 0.1, // Higher floor to preserve vocal characteristics
+            noiseUpdateRate: 0.03 // Slower adaptation to prevent voice suppression
           }
         }
       );
@@ -187,12 +212,26 @@ export class AudioService {
    */
   async startRecording(): Promise<void> {
     if (!this.isInitialized()) {
+      console.log('❌ AudioService not initialized');
       throw new Error('AudioService not initialized');
     }
-    
+
+    console.log('🔍 AudioService: Pre-recording state check:', {
+      hasAnalyser: !!this.analyser,
+      hasPitchDetector: !!this.pitchDetector,
+      analyserType: this.analyser?.constructor?.name,
+      pitchDetectorType: this.pitchDetector?.constructor?.name
+    });
+
+    // SAFETY: Stop any existing analysis loop first
+    this.stopAnalysis();
+
+    console.log('🎤 AudioService: Starting recording with pitch detection');
     audioStateActions.setRecording(true);
     this.isAnalyzing = true;
+    console.log('🔍 AudioService: About to start analysis loop with isAnalyzing:', this.isAnalyzing);
     this.startAnalysisLoop();
+    console.log('🔄 AudioService: Analysis loop started');
     
     // Start speech recognition if available
     if (this.speechService && this.speechService.isAvailable()) {
@@ -207,63 +246,326 @@ export class AudioService {
    * Stop recording
    */
   stopRecording(): void {
+    console.log('🛑 AudioService: Stopping recording');
+    this.stopAnalysis();
     audioStateActions.setRecording(false);
-    this.isAnalyzing = false;
-    
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-    
+
     // Stop speech recognition
     if (this.speechService) {
       this.speechService.stop();
     }
-    
-    console.log('Recording stopped');
+
+    console.log('🛑 Recording stopped');
+  }
+
+  /**
+   * Stop analysis loop and clear pitch results
+   */
+  private stopAnalysis(): void {
+    this.isAnalyzing = false;
+
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+
+    // Reset pitch stability processor
+    if (this.pitchStabilityProcessor) {
+      this.pitchStabilityProcessor.reset();
+    }
+
+    // Clear any stale pitch results
+    audioStateActions.setPitchResult(null);
+    console.log('🛑 Analysis loop stopped and cleared');
   }
 
   /**
    * Analysis loop for real-time pitch detection
    */
   private startAnalysisLoop = (): void => {
+    // SAFETY: Multiple checks to prevent runaway loops
     if (!this.isAnalyzing || !this.analyser || !this.pitchDetector) {
-      console.log(`Analysis loop stopped: analyzing=${this.isAnalyzing}, analyser=${!!this.analyser}, pitchDetector=${!!this.pitchDetector}`);
+      console.log(`❌ Analysis loop stopped: analyzing=${this.isAnalyzing}, analyser=${!!this.analyser}, pitchDetector=${!!this.pitchDetector}`);
+      console.log('❌ Analysis loop debug:', {
+        isAnalyzing: this.isAnalyzing,
+        hasAnalyser: !!this.analyser,
+        hasPitchDetector: !!this.pitchDetector,
+        analyserType: this.analyser?.constructor?.name,
+        pitchDetectorType: this.pitchDetector?.constructor?.name
+      });
+      this.stopAnalysis(); // Ensure complete cleanup
       return;
     }
-    
+
+    // SAFETY: Verify recording state matches
+    if (!this.isAnalyzing) {
+      console.log('❌ Analysis loop: isAnalyzing false, stopping');
+      return;
+    }
+
     const currentTime = Date.now();
-    
+
     // Throttle analysis to prevent excessive processing
     if (currentTime - this.lastAnalysisTime >= this.analysisInterval) {
       this.lastAnalysisTime = currentTime;
-      
+
+      // Log every few seconds to show loop is running
+      if (currentTime % 2000 < this.analysisInterval) {
+        console.log('🔄 Analysis loop running - checking for pitch');
+      }
+
       // Get time domain data
       const bufferLength = this.analyser.fftSize;
       const dataArray = new Float32Array(bufferLength);
       this.analyser.getFloatTimeDomainData(dataArray);
-      
-      // TEMPORARY: Disable vocal isolation to test pitch detection
+
+      // Calculate RMS to see actual signal level
+      const rms = Math.sqrt(dataArray.reduce((sum, x) => sum + x * x, 0) / dataArray.length);
+      const peak = Math.max(...dataArray.map(Math.abs));
+
+      // Update noise floor calculation
+      this.updateNoiseFloor(rms);
+
+      // Check if signal is above noise floor threshold
+      const signalAboveNoise = rms > (this.noiseFloor * this.SIGNAL_TO_NOISE_RATIO);
+
+      // Log audio levels every 2 seconds
+      if (currentTime % 2000 < this.analysisInterval) {
+        console.log('🎵 Audio Levels:', {
+          rms: rms.toFixed(6),
+          peak: peak.toFixed(6),
+          noiseFloor: this.noiseFloor.toFixed(6),
+          signalAboveNoise: signalAboveNoise,
+          snrRatio: (rms / this.noiseFloor).toFixed(2),
+          rmsPct: (rms * 100).toFixed(2) + '%',
+          peakPct: (peak * 100).toFixed(2) + '%'
+        });
+      }
+
+      // Skip pitch detection if signal is not significantly above noise floor
+      if (!signalAboveNoise) {
+        // Clear any existing pitch result to stop phantom notes
+        audioStateActions.setPitchResult(null);
+        if (currentTime % 5000 < this.analysisInterval) {
+          console.log('🔇 Signal below noise threshold, skipping pitch detection');
+        }
+        // Continue loop but skip pitch processing
+        this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
+        return;
+      }
+
+      // Enable vocal isolation for voice activity detection
       let processedData = dataArray;
-      // if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
-      //   const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
-      //   processedData = isolationResult.processedAudio;
-      //   
-      //   // Update vocal isolation state
-      //   audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
-      //   audioStateActions.setVoiceActivity(isolationResult.vadResult.confidence);
-      // }
+      let voiceActivity = 0;
+
+      if (this.vocalIsolation && this.config.vocalIsolationEnabled) {
+        try {
+          const isolationResult = this.vocalIsolation.process(dataArray, this.analyser);
+          processedData = isolationResult.processedAudio;
+          voiceActivity = isolationResult.vadResult.confidence;
+
+          // Update vocal isolation state
+          audioStateActions.setVocalIsolationReady(isolationResult.noiseProfileReady);
+          audioStateActions.setVoiceActivity(voiceActivity);
+
+          // Voice activity gate - require minimum voice confidence before pitch detection
+          const VOICE_ACTIVITY_THRESHOLD = 0.4;
+          if (voiceActivity < VOICE_ACTIVITY_THRESHOLD) {
+            // No voice detected - process null through stability processor to track silence
+            this.pitchStabilityProcessor?.process(null, 0, currentTime);
+            audioStateActions.setPitchResult(null);
+            if (currentTime % 3000 < this.analysisInterval) {
+              console.log('🔇 Voice activity below threshold:', voiceActivity.toFixed(2));
+            }
+            this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
+            return;
+          }
+        } catch (error) {
+          console.warn('Vocal isolation processing failed:', error);
+          // Fall back to using raw data if vocal isolation fails
+        }
+      }
       
-      // Detect pitch on processed audio
-      const pitchResult = this.pitchDetector.detectPitch(processedData);
-      
-      // Update state only if we have new analysis
-      audioStateActions.setPitchResult(pitchResult);
+      // Detect pitch using autocorrelation on time-domain data (or processed data if vocal isolation is enabled)
+      const rawPitchResult = this.pitchDetector.detectPitch(processedData);
+
+      // GATE: Check raw confidence floor before any processing
+      if (!rawPitchResult || rawPitchResult.confidence < this.MIN_CONFIDENCE_FLOOR) {
+        // Process null through stability processor to track silence
+        this.pitchStabilityProcessor?.process(null, 0, currentTime);
+        audioStateActions.setPitchResult(null);
+        if (currentTime % 2000 < this.analysisInterval) {
+          console.log('🔍 AudioService: Low confidence or no pitch detected');
+        }
+        this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
+        return;
+      }
+
+      // Apply octave error correction
+      const octaveCorrectedResult = this.correctOctaveErrors(rawPitchResult);
+
+      // Process through PitchStabilityProcessor for median filtering and hysteresis
+      const stableResult = this.pitchStabilityProcessor?.process(
+        octaveCorrectedResult?.frequency ?? null,
+        octaveCorrectedResult?.confidence ?? 0,
+        currentTime
+      );
+
+      // Only emit if we have a stable pitch
+      if (!stableResult) {
+        audioStateActions.setPitchResult(null);
+        if (currentTime % 2000 < this.analysisInterval) {
+          console.log('🔍 AudioService: Waiting for pitch stability...');
+        }
+        this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
+        return;
+      }
+
+      // Convert stable result back to PitchDetectionResult format
+      const finalPitchResult: PitchDetectionResult = {
+        frequency: stableResult.frequency,
+        confidence: stableResult.confidence,
+        period: this.audioContext!.sampleRate / stableResult.frequency
+      };
+
+      // Log pitch detection results
+      if (stableResult.isNewNote) {
+        console.log('🎵 NEW NOTE:', {
+          freq: stableResult.frequency.toFixed(1) + 'Hz',
+          midi: stableResult.midiNumber,
+          confidence: stableResult.confidence.toFixed(2)
+        });
+      } else if (currentTime % 2000 < this.analysisInterval) {
+        console.log('🎯 Sustaining:', {
+          freq: stableResult.frequency.toFixed(1) + 'Hz',
+          duration: stableResult.sustainDurationMs + 'ms'
+        });
+      }
+
+      // Update state with the stable pitch result
+      audioStateActions.setPitchResult(finalPitchResult);
     }
     
     // Continue loop
     this.animationFrameId = requestAnimationFrame(this.startAnalysisLoop);
   };
+
+  /**
+   * Detect and correct octave errors in pitch detection
+   */
+  private correctOctaveErrors(pitchResult: PitchDetectionResult | null): PitchDetectionResult | null {
+    if (!pitchResult) return null;
+
+    let correctedFrequency = pitchResult.frequency;
+
+    // Check for common octave errors in vocal range
+    // If frequency seems too high (above 600Hz), check if it's an octave up
+    if (correctedFrequency > 600) {
+      const octaveDown = correctedFrequency / 2;
+      if (octaveDown >= this.config.minFrequency && octaveDown <= 400) {
+        console.log(`🔧 Octave correction: ${correctedFrequency.toFixed(1)}Hz → ${octaveDown.toFixed(1)}Hz`);
+        correctedFrequency = octaveDown;
+      }
+    }
+
+    // If frequency seems too low (below 120Hz), check if it's an octave down
+    if (correctedFrequency < 120) {
+      const octaveUp = correctedFrequency * 2;
+      if (octaveUp <= this.config.maxFrequency && octaveUp >= 150) {
+        console.log(`🔧 Octave correction: ${correctedFrequency.toFixed(1)}Hz → ${octaveUp.toFixed(1)}Hz`);
+        correctedFrequency = octaveUp;
+      }
+    }
+
+    return {
+      ...pitchResult,
+      frequency: correctedFrequency
+    };
+  }
+
+  /**
+   * Apply pitch stability filtering to reduce jitter
+   */
+  private applyPitchStabilityFilter(pitchResult: PitchDetectionResult | null): PitchDetectionResult | null {
+    const currentTime = Date.now();
+
+    // If no pitch detected, clear history and return null
+    if (!pitchResult) {
+      this.pitchHistory = [];
+      return null;
+    }
+
+    // Add current pitch to history
+    this.pitchHistory.push({
+      frequency: pitchResult.frequency,
+      confidence: pitchResult.confidence,
+      timestamp: currentTime
+    });
+
+    // Remove old entries (older than 1 second)
+    this.pitchHistory = this.pitchHistory.filter(
+      entry => currentTime - entry.timestamp < 1000
+    );
+
+    // Keep only recent frames for stability check
+    const recentFrames = this.pitchHistory.slice(-this.PITCH_STABILITY_WINDOW);
+
+    if (recentFrames.length < this.MIN_STABLE_FRAMES) {
+      // Not enough history, don't return anything yet
+      return null;
+    }
+
+    // Check if recent frames are stable (within tolerance)
+    const referenceFreq = recentFrames[0].frequency;
+    const isStable = recentFrames.every(frame =>
+      Math.abs(frame.frequency - referenceFreq) <= this.PITCH_STABILITY_TOLERANCE
+    );
+
+    if (!isStable) {
+      // Pitch is not stable, wait for stability
+      return null;
+    }
+
+    // Calculate stable average frequency and confidence
+    const avgFrequency = recentFrames.reduce((sum, frame) => sum + frame.frequency, 0) / recentFrames.length;
+    const avgConfidence = recentFrames.reduce((sum, frame) => sum + frame.confidence, 0) / recentFrames.length;
+
+    return {
+      frequency: avgFrequency,
+      confidence: avgConfidence,
+      period: pitchResult.period // Use original period for now
+    };
+  }
+
+  /**
+   * Update noise floor calculation with rolling average
+   */
+  private updateNoiseFloor(currentRms: number): void {
+    // Only update noise floor when recording is NOT active (during silence)
+    // This prevents the noise floor from tracking actual vocal input
+    if (!this.isAnalyzing) {
+      this.noiseFloorSamples.push(currentRms);
+
+      // Keep only the most recent samples
+      if (this.noiseFloorSamples.length > this.NOISE_FLOOR_WINDOW) {
+        this.noiseFloorSamples.shift();
+      }
+
+      // Calculate noise floor as the 10th percentile of recent samples
+      // This helps ignore occasional loud sounds and focuses on baseline
+      const sorted = [...this.noiseFloorSamples].sort((a, b) => a - b);
+      const percentile10Index = Math.floor(sorted.length * 0.10);
+      this.noiseFloor = sorted[percentile10Index] || 0.001; // minimum noise floor
+
+      // Ensure minimum noise floor to prevent division by zero
+      this.noiseFloor = Math.max(this.noiseFloor, 0.001);
+    }
+
+    // If we don't have a good noise floor yet, use a reasonable default
+    if (this.noiseFloor < 0.001) {
+      this.noiseFloor = 0.002; // Reasonable default for most environments
+    }
+  }
 
   /**
    * Clean shutdown of all audio resources
@@ -309,6 +611,13 @@ export class AudioService {
     // Reset pitch detector and vocal isolation
     this.pitchDetector = null;
     this.vocalIsolation = null;
+
+    // Reset noise floor tracking
+    this.noiseFloor = 0;
+    this.noiseFloorSamples = [];
+
+    // Reset pitch stability tracking
+    this.pitchHistory = [];
     
     // Update state
     audioStateActions.reset();
@@ -347,13 +656,7 @@ export class AudioService {
   updateConfig(newConfig: Partial<AudioConfig>): void {
     this.config = { ...this.config, ...newConfig };
     
-    // Update pitch detector if it exists
-    if (this.pitchDetector && (newConfig.minFrequency || newConfig.maxFrequency)) {
-      this.pitchDetector.updateConfig({
-        minFreq: newConfig.minFrequency,
-        maxFreq: newConfig.maxFrequency
-      });
-    }
+    // Autocorrelation detector doesn't need runtime config updates
     
     // Update vocal isolation if it exists
     if (this.vocalIsolation && newConfig.vocalIsolationEnabled !== undefined) {
