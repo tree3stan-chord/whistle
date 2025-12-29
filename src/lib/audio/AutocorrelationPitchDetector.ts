@@ -129,6 +129,13 @@ export class AutocorrelationPitchDetector {
   private calculateAutocorrelation(buffer: Float32Array): Float32Array {
     const autocorr = new Float32Array(this.maxPeriod);
 
+    // First calculate autocorrelation at lag 0 (signal energy) for normalization
+    let energySum = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      energySum += buffer[i] * buffer[i];
+    }
+    const normalizationFactor = energySum / buffer.length || 1;
+
     for (let lag = this.minPeriod; lag < this.maxPeriod; lag++) {
       let sum = 0;
       let count = 0;
@@ -138,13 +145,7 @@ export class AutocorrelationPitchDetector {
         count++;
       }
 
-      autocorr[lag] = sum / count;
-    }
-
-    // Normalize by autocorrelation at lag 0
-    const normalizationFactor = autocorr[0] || 1;
-    for (let i = 0; i < autocorr.length; i++) {
-      autocorr[i] /= normalizationFactor;
+      autocorr[lag] = (sum / count) / normalizationFactor;
     }
 
     return autocorr;
@@ -178,12 +179,12 @@ export class AutocorrelationPitchDetector {
       bestPeriod: bestPeriod,
       bestValue: bestValue.toFixed(3),
       peakCount: peakCount,
-      threshold: 0.1,
-      willAccept: bestValue > 0.1
+      threshold: 0.3,
+      willAccept: bestValue > 0.3
     });
 
-    // Reasonable threshold for vocal input detection
-    if (bestValue > 0.1) { // Lower threshold to allow actual vocal detection
+    // With proper normalization, a clear pitch should have correlation > 0.3
+    if (bestValue > 0.3) {
       return bestPeriod;
     }
 
